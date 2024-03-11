@@ -45,26 +45,6 @@ pub fn path_to_string<P: AsRef<Path>>(path: P) -> String {
     path.as_ref().to_string_lossy().to_string()
 }
 
-//I have improved the error handling, but at what cost? (endless map_err calls)
-pub fn run_on_dir_recursive(
-    dir: &Path,
-    cb: &dyn Fn(&PathBuf) -> std::io::Result<()>,
-) -> Result<(), FileErr> {
-    if dir.is_dir() {
-        for entry in fs::read_dir(dir).map_err(|e| FileErr::map(e, dir))? {
-            let entry = entry.map_err(|e| FileErr::map(e, dir))?;
-            let path = entry.path();
-            if path.is_dir() {
-                run_on_dir_recursive(&path, cb)?;
-            } else {
-                cb(&entry.path()).map_err(|e| FileErr::map(e, &entry.path()))?;
-            }
-        }
-        cb(&PathBuf::from(dir)).map_err(|e| FileErr::map(e, dir))?;
-    }
-    Ok(())
-}
-
 pub fn run_op_on_dir_recursive<T>(
     operation: &mut T,
     dir: &Path,
@@ -78,16 +58,16 @@ where
             let entry = entry.map_err(|e| FileErr::map(e, dir))?;
             let path = entry.path();
             if path.is_dir() {
-                run_on_dir_recursive(&path, &T::cb)?;
+                run_op_on_dir_recursive(operation, &path, count)?;
             } else {
                 count += 1;
                 operation.display_cb(&path, false);
-                T::cb(&path).map_err(|e| FileErr::map(e, &entry.path()))?;
+                T::cb(&path)?;
             }
         }
         count += 1;
         operation.display_cb(&PathBuf::from(dir), true);
-        T::cb(&PathBuf::from(dir)).map_err(|e| FileErr::map(e, dir))?;
+        T::cb(&PathBuf::from(dir))?;
     }
     Ok(count)
 }

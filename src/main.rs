@@ -10,6 +10,7 @@ mod interface;
 mod operations;
 mod util;
 
+#[derive(Debug, PartialEq)]
 enum OPERATION {
     DELETE,
     TRASH,
@@ -107,6 +108,6 @@ fn main() {
 
     match operations::run_operation(OPERATION::from_args(&args), args) {
         Ok(_) => {}
-        Err(e) => eprintln!("Encountered error: {}", e),
+        Err(e) => eprintln!("{e}"),
     }
 }
