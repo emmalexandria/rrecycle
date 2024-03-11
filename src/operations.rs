@@ -1,4 +1,5 @@
 use std::{
+    error::Error,
     fmt::write,
     fs::{self, OpenOptions},
     io::Write,
@@ -42,6 +43,8 @@ impl std::fmt::Display for OperationError {
         }
     }
 }
+
+impl Error for OperationError {}
 
 pub trait RecursiveOperation {
     fn cb(path: &PathBuf) -> std::io::Result<()>;

@@ -1,6 +1,9 @@
+use core::fmt;
 use std::{
+    error::Error,
+    fmt::Display,
     fs::{self, DirEntry, File, OpenOptions},
-    io::{self, Seek, Write},
+    io::{self, ErrorKind, Seek, Write},
     path::{self, Path, PathBuf},
 };
 use trash::{os_limited, TrashItem};
@@ -15,79 +18,70 @@ use crate::{
 const SHRED_RUNS: u32 = 3;
 const SHRED_BUFFER_SIZE: usize = 4096;
 
-pub struct RestoreResult {
-    pub files: Vec<(String, String)>,
+#[derive(Debug)]
+pub struct FileErr {
+    error: std::io::Error,
+    file: String,
 }
 
-impl std::fmt::Display for RestoreResult {
+impl Display for FileErr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.files.len() == 0 {
-            write!(f, "{}", "Restored no files".red())
-        } else if self.files.len() == 1 {
-            write!(f, "Restored 1 file")
-        } else {
-            write!(f, "Restored {} files", self.files.len())
+        write!(f, "Error {} caused by {}", self.error, self.file,)
+    }
+}
+
+impl FileErr {
+    pub fn map<P: AsRef<Path>>(error: std::io::Error, path: P) -> FileErr {
+        FileErr {
+            error,
+            file: path_to_string(path),
         }
     }
 }
 
+fn path_to_string<P: AsRef<Path>>(path: P) -> String {
+    path.as_ref().to_string_lossy().to_string()
+}
+
+//I have improved the error handling, but at what cost? (endless map_err calls)
 pub fn run_on_dir_recursive(
     dir: &Path,
     cb: &dyn Fn(&PathBuf) -> std::io::Result<()>,
-) -> std::io::Result<()> {
+) -> Result<(), FileErr> {
     if dir.is_dir() {
-        for entry in fs::read_dir(dir)? {
-            let entry = entry?;
+        let entries = for entry in fs::read_dir(dir).map_err(|e| FileErr::map(e, dir))? {
+            let entry = entry.map_err(|e| FileErr::map(e, dir))?;
             let path = entry.path();
             if path.is_dir() {
                 run_on_dir_recursive(&path, cb)?;
             } else {
-                cb(&entry.path())?;
+                cb(&entry.path()).map_err(|e| FileErr::map(e, &entry.path()))?;
             }
-        }
-        cb(&PathBuf::from(dir))?;
+        };
+        cb(&PathBuf::from(dir)).map_err(|e| FileErr::map(e, dir))?;
     }
     Ok(())
 }
 
-pub fn run_op_on_dir_recursive<T>(operation: &mut T, dir: &Path) -> std::io::Result<()>
+pub fn run_op_on_dir_recursive<T>(operation: &mut T, dir: &Path) -> Result<(), FileErr>
 where
     T: RecursiveOperation,
 {
     if dir.is_dir() {
-        for entry in fs::read_dir(dir)? {
-            let entry = entry?;
+        let entries = for entry in fs::read_dir(dir).map_err(|e| FileErr::map(e, dir))? {
+            let entry = entry.map_err(|e| FileErr::map(e, dir))?;
             let path = entry.path();
             if path.is_dir() {
-                run_op_on_dir_recursive(operation, &path)?;
+                run_on_dir_recursive(&path, &T::cb)?;
             } else {
                 operation.display_cb(&path, false);
-                T::cb(&entry.path())?;
+                T::cb(&path).map_err(|e| FileErr::map(e, &entry.path()))?;
             }
-        }
+        };
         operation.display_cb(&PathBuf::from(dir), true);
-        T::cb(&PathBuf::from(dir))?;
+        T::cb(&PathBuf::from(dir)).map_err(|e| FileErr::map(e, dir))?;
     }
     Ok(())
-}
-
-pub fn get_path_entries(path: &str) -> Vec<DirEntry> {
-    let mut entries: Vec<DirEntry> = Vec::new();
-
-    for dir in fs::read_dir(path) {
-        for entry in dir {
-            match entry {
-                Ok(f) => entries.push(f),
-                Err(e) => eprintln!("{}", e),
-            }
-        }
-    }
-
-    return entries;
-}
-
-pub fn file_exists(path: PathBuf) -> bool {
-    return File::open(path).is_ok();
 }
 
 /// Function to resolve conflicts when multiple files have the same name
@@ -121,24 +115,6 @@ pub fn select_file_from_trash(name: &String) -> Option<TrashItem> {
 
     None
 }
-
-/* pub fn shred_files(path_strings: Vec<String>) -> std::io::Result<()> {
-    let files_to_shred: Vec<&Path> = Vec::new();
-
-    for path in path_strings {
-        let p = Path::new(&path);
-
-        if p.is_dir() {
-          let files
-        }
-    }
-
-    Ok(())
-} */
-
-/* pub fn shred_dir(path: &Path) {
-    let files = get_path_entries(path);
-} */
 
 pub fn overwrite_file(mut file: &File) -> std::io::Result<()> {
     if file.metadata()?.is_dir() {
