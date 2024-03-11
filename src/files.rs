@@ -26,7 +26,7 @@ pub struct FileErr {
 
 impl Display for FileErr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Error {} caused by {}", self.error, self.file,)
+        write!(f, "{}", self.error)
     }
 }
 
@@ -48,8 +48,8 @@ pub fn path_to_string<P: AsRef<Path>>(path: P) -> String {
 pub fn run_op_on_dir_recursive<T>(
     operation: &mut T,
     dir: &Path,
-    mut count: usize,
-) -> Result<usize, FileErr>
+    mut count: u64,
+) -> Result<u64, FileErr>
 where
     T: RecursiveOperation,
 {

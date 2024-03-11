@@ -18,7 +18,7 @@ use trash::{
 
 use crate::{
     files::{self, run_op_on_dir_recursive, FileErr},
-    interface::{self, finish_spinner_with_prefix, prompt_recursion},
+    interface::{self, finish_spinner_with_prefix, get_spinner, prompt_recursion},
     util, Args, OPERATION,
 };
 
@@ -78,6 +78,8 @@ impl OperationError {
 pub trait RecursiveOperation {
     fn cb(path: &PathBuf) -> Result<(), FileErr>;
     fn display_cb(&mut self, path: &PathBuf, is_dir: bool);
+
+    fn get_spinner(&self) -> &ProgressBar;
 }
 
 pub struct ListOperation;
@@ -88,12 +90,10 @@ impl ListOperation {
             Ok(l) => match interface::print_trash_table(l) {
                 Ok(_) => return Ok(()),
                 Err(e) => {
-                    eprintln!("Failed to print trash list with error {}", e);
                     return Err(OperationError::new(Box::new(e), OPERATION::LIST, None));
                 }
             },
             Err(e) => {
-                eprintln!("Failed to get trash list with error {}", e);
                 return Err(OperationError::new(Box::new(e), OPERATION::LIST, None));
             }
         }
@@ -212,20 +212,25 @@ impl TrashOperation {
     }
 }
 
-pub struct DeleteOperation;
+pub struct DeleteOperation {
+    pb: ProgressBar,
+}
 impl DeleteOperation {
     fn default() -> DeleteOperation {
-        DeleteOperation {}
+        DeleteOperation { pb: get_spinner() }
     }
 
     fn operate(&mut self, args: &Args) -> Result<(), OperationError> {
         match recurse_op(self, OPERATION::DELETE, args) {
-            Ok(_) => {
+            Ok(c) => {
+                finish_spinner_with_prefix(&self.pb, &format!("Removed {c} files"));
                 return Ok(());
             }
-            Err(e) => return Err(e),
+            Err(e) => {
+                self.pb.finish_and_clear();
+                return Err(e);
+            }
         };
-        Ok(())
     }
 }
 
@@ -237,8 +242,23 @@ impl RecursiveOperation for DeleteOperation {
         return fs::remove_file(path).map_err(|e| FileErr::map(e, path));
     }
 
-    fn display_cb(&mut self, _path: &PathBuf, _is_dir: bool) {
-        return;
+    fn display_cb(&mut self, path: &PathBuf, is_dir: bool) {
+        let path_name = match util::pathbuf_to_string(path) {
+            Some(n) => n,
+            None => "[Error converting path to name]".to_string(),
+        };
+
+        if !is_dir {
+            self.pb.set_prefix("Removing file");
+            self.pb.set_message(path_name);
+        } else {
+            self.pb.set_prefix("Removing directory");
+            self.pb.set_message(path_name);
+        }
+    }
+
+    fn get_spinner(&self) -> &ProgressBar {
+        return &self.pb;
     }
 }
 
@@ -254,11 +274,14 @@ impl ShredOperation {
 
     fn operate(&mut self, args: &Args, trash_relative: bool) -> Result<(), OperationError> {
         match recurse_op(self, OPERATION::SHRED { trash_relative }, args) {
-            Ok(_) => {
-                finish_spinner_with_prefix(&self.pb, "Files shredded");
+            Ok(c) => {
+                finish_spinner_with_prefix(&self.pb, &format!("Shredded {c} files"));
                 return Ok(());
             }
-            Err(e) => return Err(e),
+            Err(e) => {
+                self.pb.finish_and_clear();
+                return Err(e);
+            }
         };
     }
 }
@@ -292,14 +315,28 @@ impl RecursiveOperation for ShredOperation {
             self.pb.set_message(path_name);
         }
     }
+
+    fn get_spinner(&self) -> &ProgressBar {
+        return &self.pb;
+    }
 }
 
-fn recurse_op<T>(mut op: &mut T, op_type: OPERATION, args: &Args) -> Result<(), OperationError>
+fn recurse_op<T>(op: &mut T, op_type: OPERATION, args: &Args) -> Result<u64, OperationError>
 where
     T: RecursiveOperation,
 {
+    let mut counter: u64 = 0;
+
     for file in &args.files {
         let path = Path::new(&file);
+        if !path.exists() {
+            op.get_spinner().println(format!(
+                "{} {}",
+                files::path_to_string(&path).red(),
+                "does not exist, skipping".red(),
+            ));
+            continue;
+        }
         if path.is_dir() {
             if args.recurse.is_some_and(|a| a == true) {
                 if !prompt_recursion(path.to_str().unwrap().to_string()).unwrap() {
@@ -307,7 +344,7 @@ where
                 }
             }
             match files::run_op_on_dir_recursive::<T>(op, path, 0) {
-                Ok(_) => {}
+                Ok(c) => counter += c,
                 Err(e) => {
                     let file = e.file.clone();
                     return Err(OperationError::new(Box::new(e), op_type, Some(file)));
@@ -315,7 +352,7 @@ where
             };
         } else {
             match T::cb(&PathBuf::from(path)) {
-                Ok(_) => {}
+                Ok(c) => counter += 1,
                 Err(e) => {
                     let file = e.file.clone();
                     return Err(OperationError::new(Box::new(e), op_type, Some(file)));
@@ -324,7 +361,7 @@ where
         }
     }
 
-    Ok(())
+    Ok(counter)
 }
 
 pub fn run_operation(operation: OPERATION, args: Args) -> Result<(), OperationError> {
