@@ -20,8 +20,8 @@ const SHRED_BUFFER_SIZE: usize = 4096;
 
 #[derive(Debug)]
 pub struct FileErr {
-    error: std::io::Error,
-    file: String,
+    pub error: std::io::Error,
+    pub file: String,
 }
 
 impl Display for FileErr {
@@ -49,7 +49,7 @@ pub fn run_on_dir_recursive(
     cb: &dyn Fn(&PathBuf) -> std::io::Result<()>,
 ) -> Result<(), FileErr> {
     if dir.is_dir() {
-        let entries = for entry in fs::read_dir(dir).map_err(|e| FileErr::map(e, dir))? {
+        for entry in fs::read_dir(dir).map_err(|e| FileErr::map(e, dir))? {
             let entry = entry.map_err(|e| FileErr::map(e, dir))?;
             let path = entry.path();
             if path.is_dir() {
@@ -57,31 +57,37 @@ pub fn run_on_dir_recursive(
             } else {
                 cb(&entry.path()).map_err(|e| FileErr::map(e, &entry.path()))?;
             }
-        };
+        }
         cb(&PathBuf::from(dir)).map_err(|e| FileErr::map(e, dir))?;
     }
     Ok(())
 }
 
-pub fn run_op_on_dir_recursive<T>(operation: &mut T, dir: &Path) -> Result<(), FileErr>
+pub fn run_op_on_dir_recursive<T>(
+    operation: &mut T,
+    dir: &Path,
+    mut count: usize,
+) -> Result<usize, FileErr>
 where
     T: RecursiveOperation,
 {
     if dir.is_dir() {
-        let entries = for entry in fs::read_dir(dir).map_err(|e| FileErr::map(e, dir))? {
+        for entry in fs::read_dir(dir).map_err(|e| FileErr::map(e, dir))? {
             let entry = entry.map_err(|e| FileErr::map(e, dir))?;
             let path = entry.path();
             if path.is_dir() {
                 run_on_dir_recursive(&path, &T::cb)?;
             } else {
+                count += 1;
                 operation.display_cb(&path, false);
                 T::cb(&path).map_err(|e| FileErr::map(e, &entry.path()))?;
             }
-        };
+        }
+        count += 1;
         operation.display_cb(&PathBuf::from(dir), true);
         T::cb(&PathBuf::from(dir)).map_err(|e| FileErr::map(e, dir))?;
     }
-    Ok(())
+    Ok(count)
 }
 
 /// Function to resolve conflicts when multiple files have the same name

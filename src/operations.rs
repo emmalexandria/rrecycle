@@ -25,7 +25,7 @@ use crate::{
 pub enum OperationError {
     PrintTrashList { message: String },
     GetTrashList { message: String },
-    TrashFileError { message: String },
+    TrashFileError { message: String, file: String },
     DeleteFileError { message: String, file: String },
     PurgeFileError { message: String, file: String },
     ShredFileError { message: String, file: String },
@@ -36,7 +36,9 @@ impl std::fmt::Display for OperationError {
         match self {
             OperationError::GetTrashList { message } => write!(f, "{}", message),
             OperationError::PrintTrashList { message } => write!(f, "{}", message),
-            OperationError::TrashFileError { message } => write!(f, "{}", message),
+            OperationError::TrashFileError { message, file } => {
+                write!(f, "{} (Path: {})", message, file)
+            }
             OperationError::DeleteFileError { message, file } => write!(f, "{}", message),
             OperationError::PurgeFileError { message, file } => write!(f, "{}", message),
             OperationError::ShredFileError { message, file } => write!(f, "{}", message),
@@ -188,6 +190,7 @@ impl TrashOperation {
                 Err(e) => {
                     return Err(OperationError::TrashFileError {
                         message: e.to_string(),
+                        file: path.to_string_lossy().to_string(),
                     })
                 }
             };
@@ -212,11 +215,9 @@ impl DeleteOperation {
                     Ok(_) => {}
                     Err(e) => {
                         return Err(OperationError::DeleteFileError {
-                            message: e.to_string(),
-                            //This needs to be reworked. All that is passed up is the directory that was being deleted when the error was caused,
-                            //not the individual file.
-                            file: path.to_string_lossy().to_string(),
-                        });
+                            message: "Failed to delete file".to_string(),
+                            file: e.file,
+                        })
                     }
                 };
             } else {
@@ -267,12 +268,12 @@ impl ShredOperation {
                         continue;
                     }
                 }
-                match files::run_op_on_dir_recursive::<Self>(self, path) {
+                match files::run_op_on_dir_recursive::<Self>(self, path, 0) {
                     Ok(_) => {}
                     Err(e) => {
                         return Err(OperationError::ShredFileError {
                             message: e.to_string(),
-                            file: path.to_string_lossy().to_string(),
+                            file: e.file,
                         })
                     }
                 };
