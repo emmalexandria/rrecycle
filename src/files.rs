@@ -1,6 +1,6 @@
 use std::{
     fs::{self, DirEntry, File, OpenOptions},
-    io::{Seek, Write},
+    io::{self, Seek, Write},
     path::{Path, PathBuf},
 };
 use trash::{os_limited, TrashItem};
@@ -9,7 +9,7 @@ use colored::Colorize;
 
 use crate::interface::{self, format_unix_date, prompt_recursion};
 
-const SHRED_RUNS: u32 = 1;
+const SHRED_RUNS: u32 = 3;
 const SHRED_BUFFER_SIZE: usize = 4096;
 
 pub struct RestoreResult {
@@ -116,8 +116,10 @@ pub fn select_file_from_trash(name: &String) -> Option<TrashItem> {
     let files = get_path_entries(path);
 } */
 
-fn shred_file(path: PathBuf) -> std::io::Result<()> {
-    let mut file = OpenOptions::new().write(true).open(path)?;
+pub fn overwrite_file(mut file: &File) -> std::io::Result<()> {
+    if file.metadata()?.is_dir() {
+        return Ok(());
+    }
 
     let buf: [u8; SHRED_BUFFER_SIZE] = [0; SHRED_BUFFER_SIZE];
 
@@ -132,7 +134,19 @@ fn shred_file(path: PathBuf) -> std::io::Result<()> {
         if remaining_bytes > 0 {
             file.write(&vec![0; remaining_bytes])?;
         }
+        file.flush()?;
     }
 
     Ok(())
+}
+
+pub fn remove_file_or_dir(path: &PathBuf) -> std::io::Result<()> {
+    if !path.exists() {
+        return Err(std::io::ErrorKind::NotFound.into());
+    }
+
+    if path.is_dir() {
+        return fs::remove_dir(path);
+    }
+    return fs::remove_file(path);
 }

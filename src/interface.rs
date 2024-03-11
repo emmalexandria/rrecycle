@@ -4,7 +4,7 @@ use terminal_size::terminal_size;
 
 use chrono::TimeZone;
 use dialoguer::{theme::ColorfulTheme, Select};
-use indicatif::ProgressBar;
+use indicatif::{ProgressBar, ProgressStyle};
 use prettytable::{
     format::{self, FormatBuilder, TableFormat},
     row, Row, Table,

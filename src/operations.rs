@@ -1,10 +1,14 @@
 use std::{
     fmt::write,
-    fs,
+    fs::{self, OpenOptions},
+    io::Write,
     path::{Display, Path, PathBuf},
+    thread,
+    time::Duration,
 };
 
 use colored::Colorize;
+use indicatif::ProgressBar;
 use trash::{
     os_limited::{self, purge_all},
     TrashItem,
@@ -18,21 +22,23 @@ use crate::{
 
 #[derive(Debug)]
 pub enum OperationError {
-    PrintTrashList,
-    GetTrashList,
-    TrashFileError,
-    DeleteFileError,
-    RemoveFileError,
+    PrintTrashList { message: String },
+    GetTrashList { message: String },
+    TrashFileError { message: String },
+    DeleteFileError { message: String },
+    RemoveFileError { message: String },
+    ShredFileError { message: String },
 }
 
 impl std::fmt::Display for OperationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            OperationError::GetTrashList => write!(f, "Failed to get trash list"),
-            OperationError::PrintTrashList => write!(f, "Failed to print trash list"),
-            OperationError::TrashFileError => write!(f, "Failed to trash file"),
-            OperationError::DeleteFileError => write!(f, "Failed to delete file"),
-            OperationError::RemoveFileError => write!(f, "Failed to remove file"),
+            OperationError::GetTrashList { message } => write!(f, "{}", message),
+            OperationError::PrintTrashList { message } => write!(f, "{}", message),
+            OperationError::TrashFileError { message } => write!(f, "{}", message),
+            OperationError::DeleteFileError { message } => write!(f, "{}", message),
+            OperationError::RemoveFileError { message } => write!(f, "{}", message),
+            OperationError::ShredFileError { message } => write!(f, "{}", message),
         }
     }
 }
@@ -46,12 +52,16 @@ impl ListOperation {
                 Ok(_) => return Ok(()),
                 Err(e) => {
                     eprintln!("Failed to print trash list with error {}", e);
-                    return Err(OperationError::PrintTrashList);
+                    return Err(OperationError::PrintTrashList {
+                        message: e.to_string(),
+                    });
                 }
             },
             Err(e) => {
                 eprintln!("Failed to get trash list with error {}", e);
-                return Err(OperationError::GetTrashList);
+                return Err(OperationError::GetTrashList {
+                    message: e.to_string(),
+                });
             }
         }
     }
@@ -65,7 +75,11 @@ impl PurgeOperation {
         if all_files {
             match os_limited::list() {
                 Ok(l) => files = l,
-                Err(_e) => return Err(OperationError::GetTrashList),
+                Err(e) => {
+                    return Err(OperationError::GetTrashList {
+                        message: e.to_string(),
+                    })
+                }
             }
         } else {
             for file in &args.files {
@@ -147,7 +161,11 @@ impl TrashOperation {
 
             match trash::delete(path) {
                 Ok(_) => return Ok(()),
-                Err(_) => return Err(OperationError::TrashFileError),
+                Err(e) => {
+                    return Err(OperationError::TrashFileError {
+                        message: e.to_string(),
+                    })
+                }
             };
         }
 
@@ -168,12 +186,20 @@ impl DeleteOperation {
                 }
                 match run_on_dir_recursive(path, &Self::callback) {
                     Ok(_) => {}
-                    Err(_) => return Err(OperationError::DeleteFileError),
+                    Err(e) => {
+                        return Err(OperationError::DeleteFileError {
+                            message: e.to_string(),
+                        })
+                    }
                 };
             } else {
                 match Self::callback(&PathBuf::from(path)) {
                     Ok(_) => {}
-                    Err(_) => return Err(OperationError::DeleteFileError),
+                    Err(e) => {
+                        return Err(OperationError::DeleteFileError {
+                            message: e.to_string(),
+                        })
+                    }
                 };
             }
         }
@@ -188,6 +214,64 @@ impl DeleteOperation {
     }
 }
 
+struct ShredOperation {
+    pb: ProgressBar,
+}
+impl ShredOperation {
+    fn default() -> ShredOperation {
+        ShredOperation {
+            pb: interface::get_spinner(),
+        }
+    }
+
+    fn operate(&mut self, args: &Args, _trash_relative: bool) -> Result<(), OperationError> {
+        for file in &args.files {
+            let path = Path::new(&file);
+            if path.is_dir() {
+                if args.recurse.is_some_and(|a| a == true) {
+                    if !prompt_recursion(path.to_str().unwrap().to_string()).unwrap() {
+                        continue;
+                    }
+                }
+                self.pb.set_message(format!("Shredding directory {file}"));
+                match run_on_dir_recursive(path, &Self::callback) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        return Err(OperationError::ShredFileError {
+                            message: e.to_string(),
+                        })
+                    }
+                };
+            } else {
+                self.pb.set_message(format!("Shredding file {file}"));
+                match ShredOperation::callback(&PathBuf::from(path)) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        return Err(OperationError::ShredFileError {
+                            message: e.to_string(),
+                        })
+                    }
+                };
+            }
+        }
+
+        self.pb.finish_with_message("Shredded all files");
+
+        Ok(())
+    }
+
+    fn callback(path: &PathBuf) -> std::io::Result<()> {
+        if !path.is_dir() {
+            let file = OpenOptions::new().write(true).open(path)?;
+            files::overwrite_file(&file)?;
+        }
+
+        files::remove_file_or_dir(path)?;
+
+        Ok(())
+    }
+}
+
 pub fn run_operation(operation: OPERATION, args: Args) -> Result<(), OperationError> {
     match operation {
         OPERATION::RESTORE => RestoreOperation::operate(&args),
@@ -195,7 +279,9 @@ pub fn run_operation(operation: OPERATION, args: Args) -> Result<(), OperationEr
         OPERATION::PURGE { all_files } => PurgeOperation::operate(&args, all_files),
         OPERATION::DELETE => DeleteOperation::operate(&args),
         OPERATION::TRASH => TrashOperation::operate(&args),
-        OPERATION::SHRED { trash_relative } => todo!(),
-        OPERATION::NONE => todo!(),
+        OPERATION::SHRED { trash_relative } => {
+            ShredOperation::default().operate(&args, trash_relative)
+        }
+        OPERATION::NONE => Ok(()),
     }
 }

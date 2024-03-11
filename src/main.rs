@@ -16,8 +16,8 @@ enum OPERATION {
     RESTORE,
     SHRED { trash_relative: bool },
     LIST,
-    NONE,
     PURGE { all_files: bool },
+    NONE,
 }
 
 impl OPERATION {
