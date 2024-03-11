@@ -16,7 +16,7 @@ use trash::{
 
 use crate::{
     files::{self, run_on_dir_recursive},
-    interface::{self, prompt_recursion},
+    interface::{self, finish_spinner_with_prefix, prompt_recursion},
     util, Args, OPERATION,
 };
 
@@ -77,6 +77,8 @@ pub struct PurgeOperation;
 impl PurgeOperation {
     fn operate(args: &Args, all_files: bool) -> Result<(), OperationError> {
         let mut files: Vec<TrashItem> = Vec::new();
+
+        let pb = interface::get_spinner();
         if all_files {
             match os_limited::list() {
                 Ok(l) => files = l,
@@ -88,17 +90,20 @@ impl PurgeOperation {
             }
         } else {
             for file in &args.files {
-                files.push(files::select_file_from_trash(file).unwrap());
+                match files::select_file_from_trash(file) {
+                    Some(f) => files.push(f),
+                    None => pb.println(format!("{file} did not match any file in the recycle bin")),
+                }
             }
         }
 
-        let pb = interface::get_spinner();
         for file in files {
-            pb.set_message(format!("Purging {}", file.name));
+            pb.set_prefix("Purging");
+            pb.set_message(file.name.clone());
             purge_all(vec![file]).unwrap();
         }
 
-        pb.finish_with_message("Files purged");
+        finish_spinner_with_prefix(&pb, "Files purged");
 
         Ok(())
     }
@@ -231,7 +236,7 @@ impl RecursiveOperation for DeleteOperation {
         return fs::remove_file(path);
     }
 
-    fn display_cb(&mut self, path: &PathBuf, is_dir: bool) {
+    fn display_cb(&mut self, _path: &PathBuf, _is_dir: bool) {
         return;
     }
 }
@@ -275,8 +280,7 @@ impl ShredOperation {
             }
         }
 
-        self.pb.finish_with_message("Shredded all files");
-
+        finish_spinner_with_prefix(&self.pb, "Files shredded");
         Ok(())
     }
 }
@@ -300,10 +304,11 @@ impl RecursiveOperation for ShredOperation {
         };
 
         if !is_dir {
-            self.pb.set_message(format!("Shredding file {}", path_name));
+            self.pb.set_prefix("Shredding file");
+            self.pb.set_message(path_name);
         } else {
-            self.pb
-                .set_message(format!("Deleting directory {}", path_name));
+            self.pb.set_prefix("Deleting directory");
+            self.pb.set_message(path_name);
         }
     }
 }

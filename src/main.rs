@@ -57,47 +57,40 @@ impl OPERATION {
 #[derive(FromArgs)]
 ///Basic arguments
 struct Args {
-    #[argh(
-        switch,
-        short = 'd',
-        description = "delete a file permanently without overwriting"
-    )]
-    delete: Option<bool>,
-
     #[argh(switch, short = 't', description = "move a file to the trash bin")]
     trash: Option<bool>,
-
     #[argh(switch, short = 'r', description = "restore a file from the trash bin")]
     restore: Option<bool>,
-
-    #[argh(
-        switch,
-        short = 's',
-        description = "shred a file (overwrite and then delete). can be combined with -R to shred a file in the trash bin"
-    )]
-    shred: Option<bool>,
-
     #[argh(
         switch,
         short = 'p',
         description = "delete a file from the trash bin. deletes all if '*' is passed"
     )]
     purge: Option<bool>,
-
+    #[argh(
+        switch,
+        short = 'd',
+        description = "delete a file permanently without overwriting"
+    )]
+    delete: Option<bool>,
+    #[argh(
+        switch,
+        short = 's',
+        description = "shred a file (overwrite and then delete). can be combined with -p to shred a file in the trash bin"
+    )]
+    shred: Option<bool>,
     #[argh(
         switch,
         short = 'l',
         description = "list all files in the system trash"
     )]
     list: Option<bool>,
-
     #[argh(
         switch,
         short = 'R',
         description = "recurse through directories without user confirmation"
     )]
     recurse: Option<bool>,
-
     #[argh(
         switch,
         short = 'q',

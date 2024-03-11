@@ -4,7 +4,7 @@ use terminal_size::terminal_size;
 
 use chrono::TimeZone;
 use dialoguer::{theme::ColorfulTheme, Select};
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::{ProgressBar, ProgressFinish, ProgressStyle};
 use prettytable::{
     format::{self, FormatBuilder, TableFormat},
     row, Row, Table,
@@ -125,7 +125,26 @@ pub fn file_conflict_prompt(name: &str, items: Vec<String>) -> usize {
 }
 
 pub fn get_spinner() -> ProgressBar {
-    let pb = ProgressBar::new_spinner();
-    pb.enable_steady_tick(Duration::from_millis(120));
+    let style = ProgressStyle::default_spinner()
+        .tick_chars("✶✸✹✺✹✷✓")
+        .template("{spinner:.cyan} {prefix:.bold} {wide_msg} [{elapsed_precise}]")
+        .unwrap();
+
+    let pb = ProgressBar::new_spinner()
+        .with_style(style)
+        .with_finish(ProgressFinish::AndLeave);
+    pb.enable_steady_tick(Duration::from_millis(200));
     return pb;
 }
+
+//Slightly weird way we have to set the progressbar to avoid an empty prefix adding spaces between the finish char
+//Basically, can't use pb.finish_with_message() because that'll leave the prefix (and the spaces around it)
+pub fn finish_spinner_with_prefix(pb: &ProgressBar, message: &str) {
+    pb.set_message("");
+    pb.set_prefix(message.to_string());
+    pb.tick();
+    pb.finish();
+}
+
+///Function to mimic the finishing line of a progress bar for code that does not use a progress bar
+pub fn print_finish_line() {}

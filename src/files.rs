@@ -61,12 +61,12 @@ where
             if path.is_dir() {
                 run_op_on_dir_recursive(operation, &path)?;
             } else {
-                T::cb(&entry.path())?;
                 operation.display_cb(&path, false);
+                T::cb(&entry.path())?;
             }
         }
-        T::cb(&PathBuf::from(dir))?;
         operation.display_cb(&PathBuf::from(dir), true);
+        T::cb(&PathBuf::from(dir))?;
     }
     Ok(())
 }
@@ -151,7 +151,7 @@ pub fn overwrite_file(mut file: &File) -> std::io::Result<()> {
 
     for _ in 0..SHRED_RUNS {
         for _ in 0..(file_size / SHRED_BUFFER_SIZE as u64) {
-            file.write_all(&buf)?;
+            file.write(&buf)?;
         }
 
         let remaining_bytes = (file_size - file.stream_position()?) as usize;
