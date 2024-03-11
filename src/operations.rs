@@ -43,6 +43,11 @@ impl std::fmt::Display for OperationError {
     }
 }
 
+pub trait RecursiveOperation {
+    fn cb(path: &PathBuf) -> std::io::Result<()>;
+    fn display_cb(&mut self, path: &PathBuf, is_dir: bool);
+}
+
 pub struct ListOperation;
 
 impl ListOperation {
@@ -154,6 +159,17 @@ impl RestoreOperation {
 }
 
 pub struct TrashOperation;
+
+impl RecursiveOperation for TrashOperation {
+    fn cb(path: &PathBuf) -> std::io::Result<()> {
+        todo!()
+    }
+
+    fn display_cb(&mut self, path: &PathBuf, is_dir: bool) {
+        todo!()
+    }
+}
+
 impl TrashOperation {
     fn operate(args: &Args) -> Result<(), OperationError> {
         for file in &args.files {
@@ -184,7 +200,7 @@ impl DeleteOperation {
                         continue;
                     }
                 }
-                match run_on_dir_recursive(path, &Self::callback) {
+                match run_on_dir_recursive(path, &Self::cb) {
                     Ok(_) => {}
                     Err(e) => {
                         return Err(OperationError::DeleteFileError {
@@ -193,7 +209,7 @@ impl DeleteOperation {
                     }
                 };
             } else {
-                match Self::callback(&PathBuf::from(path)) {
+                match Self::cb(&PathBuf::from(path)) {
                     Ok(_) => {}
                     Err(e) => {
                         return Err(OperationError::DeleteFileError {
@@ -205,12 +221,18 @@ impl DeleteOperation {
         }
         Ok(())
     }
+}
 
-    fn callback(path: &PathBuf) -> std::io::Result<()> {
+impl RecursiveOperation for DeleteOperation {
+    fn cb(path: &PathBuf) -> std::io::Result<()> {
         if path.is_dir() {
             return fs::remove_dir(path);
         }
         return fs::remove_file(path);
+    }
+
+    fn display_cb(&mut self, path: &PathBuf, is_dir: bool) {
+        return;
     }
 }
 
@@ -233,8 +255,7 @@ impl ShredOperation {
                         continue;
                     }
                 }
-                self.pb.set_message(format!("Shredding directory {file}"));
-                match run_on_dir_recursive(path, &Self::callback) {
+                match files::run_op_on_dir_recursive::<Self>(self, path) {
                     Ok(_) => {}
                     Err(e) => {
                         return Err(OperationError::ShredFileError {
@@ -243,8 +264,7 @@ impl ShredOperation {
                     }
                 };
             } else {
-                self.pb.set_message(format!("Shredding file {file}"));
-                match ShredOperation::callback(&PathBuf::from(path)) {
+                match Self::cb(&PathBuf::from(path)) {
                     Ok(_) => {}
                     Err(e) => {
                         return Err(OperationError::ShredFileError {
@@ -259,8 +279,10 @@ impl ShredOperation {
 
         Ok(())
     }
+}
 
-    fn callback(path: &PathBuf) -> std::io::Result<()> {
+impl RecursiveOperation for ShredOperation {
+    fn cb(path: &PathBuf) -> std::io::Result<()> {
         if !path.is_dir() {
             let file = OpenOptions::new().write(true).open(path)?;
             files::overwrite_file(&file)?;
@@ -269,6 +291,20 @@ impl ShredOperation {
         files::remove_file_or_dir(path)?;
 
         Ok(())
+    }
+
+    fn display_cb(&mut self, path: &PathBuf, is_dir: bool) {
+        let path_name = match util::pathbuf_to_string(path) {
+            Some(n) => n,
+            None => "[Error converting path to name]".to_string(),
+        };
+
+        if !is_dir {
+            self.pb.set_message(format!("Shredding file {}", path_name));
+        } else {
+            self.pb
+                .set_message(format!("Deleting directory {}", path_name));
+        }
     }
 }
 

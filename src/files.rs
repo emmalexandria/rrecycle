@@ -1,13 +1,16 @@
 use std::{
     fs::{self, DirEntry, File, OpenOptions},
     io::{self, Seek, Write},
-    path::{Path, PathBuf},
+    path::{self, Path, PathBuf},
 };
 use trash::{os_limited, TrashItem};
 
 use colored::Colorize;
 
-use crate::interface::{self, format_unix_date, prompt_recursion};
+use crate::{
+    interface::{self, format_unix_date, prompt_recursion},
+    operations::RecursiveOperation,
+};
 
 const SHRED_RUNS: u32 = 3;
 const SHRED_BUFFER_SIZE: usize = 4096;
@@ -43,6 +46,27 @@ pub fn run_on_dir_recursive(
             }
         }
         cb(&PathBuf::from(dir))?;
+    }
+    Ok(())
+}
+
+pub fn run_op_on_dir_recursive<T>(operation: &mut T, dir: &Path) -> std::io::Result<()>
+where
+    T: RecursiveOperation,
+{
+    if dir.is_dir() {
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                run_op_on_dir_recursive(operation, &path)?;
+            } else {
+                T::cb(&entry.path())?;
+                operation.display_cb(&path, false);
+            }
+        }
+        T::cb(&PathBuf::from(dir))?;
+        operation.display_cb(&PathBuf::from(dir), true);
     }
     Ok(())
 }
