@@ -25,9 +25,9 @@ pub enum OperationError {
     PrintTrashList { message: String },
     GetTrashList { message: String },
     TrashFileError { message: String },
-    DeleteFileError { message: String },
-    RemoveFileError { message: String },
-    ShredFileError { message: String },
+    DeleteFileError { message: String, file: String },
+    PurgeFileError { message: String, file: String },
+    ShredFileError { message: String, file: String },
 }
 
 impl std::fmt::Display for OperationError {
@@ -36,9 +36,9 @@ impl std::fmt::Display for OperationError {
             OperationError::GetTrashList { message } => write!(f, "{}", message),
             OperationError::PrintTrashList { message } => write!(f, "{}", message),
             OperationError::TrashFileError { message } => write!(f, "{}", message),
-            OperationError::DeleteFileError { message } => write!(f, "{}", message),
-            OperationError::RemoveFileError { message } => write!(f, "{}", message),
-            OperationError::ShredFileError { message } => write!(f, "{}", message),
+            OperationError::DeleteFileError { message, file } => write!(f, "{}", message),
+            OperationError::PurgeFileError { message, file } => write!(f, "{}", message),
+            OperationError::ShredFileError { message, file } => write!(f, "{}", message),
         }
     }
 }
@@ -210,7 +210,10 @@ impl DeleteOperation {
                     Err(e) => {
                         return Err(OperationError::DeleteFileError {
                             message: e.to_string(),
-                        })
+                            //This needs to be reworked. All that is passed up is the directory that was being deleted when the error was caused,
+                            //not the individual file.
+                            file: path.to_string_lossy().to_string(),
+                        });
                     }
                 };
             } else {
@@ -219,6 +222,7 @@ impl DeleteOperation {
                     Err(e) => {
                         return Err(OperationError::DeleteFileError {
                             message: e.to_string(),
+                            file: path.to_string_lossy().to_string(),
                         })
                     }
                 };
@@ -265,6 +269,7 @@ impl ShredOperation {
                     Err(e) => {
                         return Err(OperationError::ShredFileError {
                             message: e.to_string(),
+                            file: path.to_string_lossy().to_string(),
                         })
                     }
                 };
@@ -274,6 +279,7 @@ impl ShredOperation {
                     Err(e) => {
                         return Err(OperationError::ShredFileError {
                             message: e.to_string(),
+                            file: path.to_string_lossy().to_string(),
                         })
                     }
                 };
