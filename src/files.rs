@@ -15,7 +15,7 @@ use crate::{
     operations::RecursiveOperation,
 };
 
-const SHRED_RUNS: u32 = 3;
+const SHRED_RUNS: u32 = 1;
 const SHRED_BUFFER_SIZE: usize = 4096;
 
 #[derive(Debug)]
@@ -39,7 +39,9 @@ impl FileErr {
     }
 }
 
-fn path_to_string<P: AsRef<Path>>(path: P) -> String {
+impl Error for FileErr {}
+
+pub fn path_to_string<P: AsRef<Path>>(path: P) -> String {
     path.as_ref().to_string_lossy().to_string()
 }
 
@@ -141,6 +143,8 @@ pub fn overwrite_file(mut file: &File) -> std::io::Result<()> {
             file.write(&vec![0; remaining_bytes])?;
         }
         file.flush()?;
+
+        file.seek(io::SeekFrom::Start(0))?;
     }
 
     Ok(())

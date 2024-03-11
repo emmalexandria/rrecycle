@@ -16,7 +16,7 @@ use trash::{
 };
 
 use crate::{
-    files::{self, run_on_dir_recursive},
+    files::{self, run_on_dir_recursive, FileErr},
     interface::{self, finish_spinner_with_prefix, prompt_recursion},
     util, Args, OPERATION,
 };
@@ -29,6 +29,8 @@ pub enum OperationError {
     DeleteFileError { message: String, file: String },
     PurgeFileError { message: String, file: String },
     ShredFileError { message: String, file: String },
+    RestoreFileError { message: String, file: String },
+    None,
 }
 
 impl std::fmt::Display for OperationError {
@@ -42,12 +44,48 @@ impl std::fmt::Display for OperationError {
             OperationError::DeleteFileError { message, file } => write!(f, "{}", message),
             OperationError::PurgeFileError { message, file } => write!(f, "{}", message),
             OperationError::ShredFileError { message, file } => write!(f, "{}", message),
+            OperationError::RestoreFileError { message, file } => write!(f, "{}", message),
+            OperationError::None => write!(f, ""),
         }
     }
 }
 
 impl Error for OperationError {}
 
+impl OperationError {
+    pub fn from_operation(
+        operation: OPERATION,
+        file: String,
+        err: Box<dyn Error>,
+    ) -> OperationError {
+        match operation {
+            OPERATION::DELETE => OperationError::DeleteFileError {
+                message: "Couldn't delete file".to_string(),
+                file,
+            },
+            OPERATION::TRASH => OperationError::TrashFileError {
+                message: "Couldn't trash file".to_string(),
+                file,
+            },
+            OPERATION::RESTORE => OperationError::RestoreFileError {
+                message: "Couldn't restore file".to_string(),
+                file,
+            },
+            OPERATION::SHRED { trash_relative } => OperationError::ShredFileError {
+                message: "Couldn't shred file".to_string(),
+                file,
+            },
+            OPERATION::LIST => OperationError::PrintTrashList {
+                message: "Couldn't print trash list".to_string(),
+            },
+            OPERATION::PURGE { all_files } => OperationError::PurgeFileError {
+                message: "Couldn't purge file".to_string(),
+                file,
+            },
+            OPERATION::NONE => OperationError::None,
+        }
+    }
+}
 pub trait RecursiveOperation {
     fn cb(path: &PathBuf) -> std::io::Result<()>;
     fn display_cb(&mut self, path: &PathBuf, is_dir: bool);
@@ -202,36 +240,17 @@ impl TrashOperation {
 
 pub struct DeleteOperation;
 impl DeleteOperation {
-    fn operate(args: &Args) -> Result<(), OperationError> {
-        for file in &args.files {
-            let path = Path::new(&file);
-            if path.is_dir() {
-                if args.recurse.is_some_and(|a| a == true) {
-                    if !prompt_recursion(path.to_str().unwrap().to_string()).unwrap() {
-                        continue;
-                    }
-                }
-                match run_on_dir_recursive(path, &Self::cb) {
-                    Ok(_) => {}
-                    Err(e) => {
-                        return Err(OperationError::DeleteFileError {
-                            message: "Failed to delete file".to_string(),
-                            file: e.file,
-                        })
-                    }
-                };
-            } else {
-                match Self::cb(&PathBuf::from(path)) {
-                    Ok(_) => {}
-                    Err(e) => {
-                        return Err(OperationError::DeleteFileError {
-                            message: e.to_string(),
-                            file: path.to_string_lossy().to_string(),
-                        })
-                    }
-                };
+    fn default() -> DeleteOperation {
+        DeleteOperation {}
+    }
+
+    fn operate(&mut self, args: &Args) -> Result<(), OperationError> {
+        match recurse_op(self, OPERATION::DELETE, args) {
+            Ok(_) => {
+                return Ok(());
             }
-        }
+            Err(e) => return Err(e),
+        };
         Ok(())
     }
 }
@@ -259,39 +278,14 @@ impl ShredOperation {
         }
     }
 
-    fn operate(&mut self, args: &Args, _trash_relative: bool) -> Result<(), OperationError> {
-        for file in &args.files {
-            let path = Path::new(&file);
-            if path.is_dir() {
-                if args.recurse.is_some_and(|a| a == true) {
-                    if !prompt_recursion(path.to_str().unwrap().to_string()).unwrap() {
-                        continue;
-                    }
-                }
-                match files::run_op_on_dir_recursive::<Self>(self, path, 0) {
-                    Ok(_) => {}
-                    Err(e) => {
-                        return Err(OperationError::ShredFileError {
-                            message: e.to_string(),
-                            file: e.file,
-                        })
-                    }
-                };
-            } else {
-                match Self::cb(&PathBuf::from(path)) {
-                    Ok(_) => {}
-                    Err(e) => {
-                        return Err(OperationError::ShredFileError {
-                            message: e.to_string(),
-                            file: path.to_string_lossy().to_string(),
-                        })
-                    }
-                };
+    fn operate(&mut self, args: &Args, trash_relative: bool) -> Result<(), OperationError> {
+        match recurse_op(self, OPERATION::SHRED { trash_relative }, args) {
+            Ok(_) => {
+                finish_spinner_with_prefix(&self.pb, "Files shredded");
+                return Ok(());
             }
-        }
-
-        finish_spinner_with_prefix(&self.pb, "Files shredded");
-        Ok(())
+            Err(e) => return Err(e),
+        };
     }
 }
 
@@ -323,12 +317,51 @@ impl RecursiveOperation for ShredOperation {
     }
 }
 
+fn recurse_op<T>(mut op: &mut T, op_type: OPERATION, args: &Args) -> Result<(), OperationError>
+where
+    T: RecursiveOperation,
+{
+    for file in &args.files {
+        let path = Path::new(&file);
+        if path.is_dir() {
+            if args.recurse.is_some_and(|a| a == true) {
+                if !prompt_recursion(path.to_str().unwrap().to_string()).unwrap() {
+                    continue;
+                }
+            }
+            match files::run_op_on_dir_recursive::<T>(op, path, 0) {
+                Ok(_) => {}
+                Err(e) => {
+                    return Err(OperationError::from_operation(
+                        op_type,
+                        e.file.clone(),
+                        Box::new(e),
+                    ))
+                }
+            };
+        } else {
+            match T::cb(&PathBuf::from(path)) {
+                Ok(_) => {}
+                Err(e) => {
+                    return Err(OperationError::from_operation(
+                        op_type,
+                        files::path_to_string(&path),
+                        Box::new(e),
+                    ))
+                }
+            };
+        }
+    }
+
+    Ok(())
+}
+
 pub fn run_operation(operation: OPERATION, args: Args) -> Result<(), OperationError> {
     match operation {
         OPERATION::RESTORE => RestoreOperation::operate(&args),
         OPERATION::LIST => ListOperation::operate(),
         OPERATION::PURGE { all_files } => PurgeOperation::operate(&args, all_files),
-        OPERATION::DELETE => DeleteOperation::operate(&args),
+        OPERATION::DELETE => DeleteOperation::default().operate(&args),
         OPERATION::TRASH => TrashOperation::operate(&args),
         OPERATION::SHRED { trash_relative } => {
             ShredOperation::default().operate(&args, trash_relative)
