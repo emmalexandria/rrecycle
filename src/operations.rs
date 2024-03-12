@@ -45,11 +45,7 @@ impl Display for OperationError {
             _ => "",
         };
         if self.operation == OPERATION::LIST {
-            write!(
-                f,
-                "Error while getting trash list: {}",
-                self.err
-            )
+            write!(f, "Error while getting trash list: {}", self.err)
         } else {
             let file;
             if self.file.is_some() {
@@ -57,13 +53,7 @@ impl Display for OperationError {
             } else {
                 file = "[no file set]".to_string()
             }
-            write!(
-                f,
-                "Error while {} {}: {}",
-                op_string,
-                file,
-                self.err
-            )
+            write!(f, "Error while {} {}: {}", op_string, file, self.err)
         }
     }
 }
@@ -84,13 +74,9 @@ impl BasicOperations {
         match os_limited::list() {
             Ok(l) => match output::print_trash_table(l) {
                 Ok(_) => Ok(()),
-                Err(e) => {
-                    Err(OperationError::new(Box::new(e), OPERATION::LIST, None))
-                }
+                Err(e) => Err(OperationError::new(Box::new(e), OPERATION::LIST, None)),
             },
-            Err(e) => {
-                Err(OperationError::new(Box::new(e), OPERATION::LIST, None))
-            }
+            Err(e) => Err(OperationError::new(Box::new(e), OPERATION::LIST, None)),
         }
     }
     pub fn purge(args: &Args, all_files: bool) -> Result<(), OperationError> {
@@ -117,13 +103,14 @@ impl BasicOperations {
             }
         }
 
+        let len = files.len();
         for file in files {
             pb.set_prefix("Purging");
             pb.set_message(file.name.clone());
             purge_all(vec![file]).unwrap();
         }
 
-        output::finish_spinner_with_prefix(&pb, "Files purged");
+        output::finish_spinner_with_prefix(&pb, &format!("Purged {} files", len));
 
         Ok(())
     }
@@ -148,9 +135,7 @@ impl BasicOperations {
                 output::print_success(format!("Trashed {} files", len));
                 Ok(())
             }
-            Err(e) => {
-                Err(OperationError::new(Box::new(e), OPERATION::TRASH, None))
-            }
+            Err(e) => Err(OperationError::new(Box::new(e), OPERATION::TRASH, None)),
         }
     }
 }
@@ -374,7 +359,9 @@ where
             continue;
         }
         if path.is_dir() {
-            if args.recurse.is_some_and(|a| a) && !prompt_recursion(path.to_str().unwrap().to_string()).unwrap() {
+            if args.recurse.is_some_and(|a| a)
+                && !prompt_recursion(path.to_str().unwrap().to_string()).unwrap()
+            {
                 continue;
             }
             match files::run_op_on_dir_recursive::<T>(op, path, 0) {
