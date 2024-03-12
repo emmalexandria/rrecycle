@@ -139,11 +139,10 @@ impl BasicOperations {
             if p.exists() {
                 files.push(p);
             } else {
-                println!(
-                    "{} {}",
-                    path_to_string(path).red(),
-                    "does not exist, skipping...".red()
-                );
+                output::print_error(format!(
+                    "{} does not exist, skipping...",
+                    path_to_string(path)
+                ));
             }
         }
 
@@ -158,55 +157,100 @@ impl BasicOperations {
 
 pub struct RestoreOperation;
 
+//This was more complicated to implement than I expected, so there'll be a lot of comments
 impl RestoreOperation {
     fn operate(args: &Args) -> Result<(), OperationError> {
-        let mut files_to_restore = Vec::<String>::new();
+        //stores the current list of files that will have attempt_restore() called on them on each loop iteration
+        let mut files = args.files.clone();
 
         loop {
-            let result = Self::attempt_restore(args.files.clone());
-            match result {
-                Ok(_) => {
-                    return Ok(());
-                }
-                Err(e) => match e {
-                    trash::Error::RestoreCollision {
-                        path,
-                        remaining_items,
-                    } => {
-                        println!(
-                            "{} {}{}",
-                            "File already exists at path".red(),
-                            util::pathbuf_to_string(&path).unwrap().red(),
-                            ", skipping...".red()
-                        );
-
-                        files_to_restore = files_to_restore
-                            .into_iter()
-                            .filter(|f| f != &util::get_file_name(&path).unwrap())
-                            .collect();
+            //must store the length of files in the restore attempt up here before files is moved into attempt_restore (for use in potential success message)
+            let curr_file_len = files.len();
+            let res_result = Self::attempt_restore(files);
+            match res_result {
+                Ok(new_files) => {
+                    //If there are new files, set the local file variable and run the loop again
+                    if new_files.is_some() {
+                        files = new_files.unwrap();
                         continue;
+                    } else {
+                        //If there are no new files, the loop can print a success message and the function can return
+                        output::print_success(format!("Restored {} files", curr_file_len));
+                        return Ok(());
                     }
-                    _ => eprintln!("Failed to restore file with error {}", e),
-                },
+                }
+                Err(e) => return Err(e),
             }
         }
     }
 
-    fn attempt_restore(files: Vec<String>) -> Result<(), trash::Error> {
-        let mut restore_files = Vec::<TrashItem>::new();
-
+    ///Attemps to restore the file. Handles any errors that might occur (or paths that don't actually exist in the trash)
+    /// Returns a Ok(Some()) modified copy of the input files if changes had to be made, otherwise it returns Ok(None)
+    fn attempt_restore(files: Vec<String>) -> Result<Option<Vec<String>>, OperationError> {
+        let mut new_files = files.clone();
         for path in files {
-            match files::select_file_from_trash(&path) {
-                None => continue,
-                Some(t) => {
-                    restore_files.push(t.clone());
+            match Self::restore_single(&path) {
+                Ok(exists) => {
+                    //If the file does not exist, print an error and remove it from the files but do not actually error
+                    if !exists {
+                        output::print_error(format!("{path} does not exist in trash, skipping..."));
+                        util::remove_string_from_vec(&mut new_files, path);
+                        continue;
+                    }
                 }
+                Err(e) => match Self::handle_collision(e, &mut new_files, &path) {
+                    Ok(_) => continue,
+                    Err(inner_e) => {
+                        return Err(OperationError::new(
+                            Box::new(inner_e),
+                            OPERATION::RESTORE,
+                            Some(path),
+                        ))
+                    }
+                },
             }
         }
 
-        os_limited::restore_all(restore_files.clone())?;
+        return Ok(None);
+    }
 
-        Ok(())
+    ///Attempt to restore a single file, returning Ok(true) if the file existed in the trash, and Ok(false) if the file did not.
+    fn restore_single(file: &String) -> Result<bool, trash::Error> {
+        let trash_item = files::select_file_from_trash(file);
+        match trash_item {
+            Some(i) => {
+                os_limited::restore_all(vec![i])?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
+    fn handle_collision(
+        error: trash::Error,
+        files: &mut Vec<String>,
+        path: &String,
+    ) -> Result<(), trash::Error> {
+        //RestoreTwins is also technically an error that we could handle in a similar way, but with how this program works its unecessary
+        //RestoreTwins requires that the user passes in two files that have the same name (referencing them in another way), but because
+        //we do not allow the user to reference two items that could have the same path anyway, it can go unhandled
+        match error {
+            trash::Error::RestoreCollision {
+                path: path_buf,
+                remaining_items,
+            } => {
+                output::print_error(format!(
+                    "File already exists at path {}, skipping...",
+                    files::path_to_string(&path_buf)
+                ));
+
+                //This function modifies a vec reference in place, so theres no need for a return value
+                util::remove_first_string_from_vec(files, path.to_string());
+
+                return Ok(());
+            }
+            _ => return Err(error),
+        }
     }
 }
 
@@ -241,10 +285,7 @@ impl RecursiveOperation for DeleteOperation {
     }
 
     fn display_cb(&mut self, path: &PathBuf, is_dir: bool) {
-        let path_name = match util::pathbuf_to_string(path) {
-            Some(n) => n,
-            None => "[Error converting path to name]".to_string(),
-        };
+        let path_name = files::path_to_string(path);
 
         if !is_dir {
             self.pb.set_prefix("Removing file");
@@ -300,10 +341,7 @@ impl RecursiveOperation for ShredOperation {
     }
 
     fn display_cb(&mut self, path: &PathBuf, is_dir: bool) {
-        let path_name = match util::pathbuf_to_string(path) {
-            Some(n) => n,
-            None => "[Error converting path to name]".to_string(),
-        };
+        let path_name = files::path_to_string(path);
 
         if !is_dir {
             self.pb.set_prefix("Shredding file");

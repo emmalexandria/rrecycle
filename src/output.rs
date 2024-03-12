@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use colored::Colorize;
 use terminal_size::terminal_size;
 
 use chrono::TimeZone;
@@ -11,7 +12,7 @@ use prettytable::{
 };
 use trash::TrashItem;
 
-use crate::util;
+use crate::{files, util};
 
 pub fn format_unix_date(time: i64) -> String {
     chrono::Local
@@ -61,9 +62,7 @@ fn get_sized_table(items: &Vec<TrashItem>, format: &TableFormat) -> Table {
 
     for item in items {
         let len = item.name.len()
-            + util::pathbuf_to_string(&item.original_path())
-                .unwrap()
-                .len()
+            + files::path_to_string(&item.original_path()).len()
             + format_unix_date(item.time_deleted).len();
 
         if len > longest_row_len {
@@ -82,8 +81,7 @@ fn get_sized_table(items: &Vec<TrashItem>, format: &TableFormat) -> Table {
         for item in items {
             table.add_row(row![
                 item.name,
-                "...".to_string()
-                    + &util::pathbuf_to_string(&item.original_path()).unwrap()[over..],
+                "...".to_string() + &files::path_to_string(&item.original_path())[over..],
                 format_unix_date(item.time_deleted)
             ]);
         }
@@ -91,7 +89,7 @@ fn get_sized_table(items: &Vec<TrashItem>, format: &TableFormat) -> Table {
         for item in items {
             table.add_row(row![
                 item.name,
-                util::pathbuf_to_string(&item.original_path()).unwrap(),
+                files::path_to_string(&item.original_path()),
                 format_unix_date(item.time_deleted)
             ]);
         }
@@ -113,9 +111,9 @@ pub fn prompt_recursion(path: String) -> Result<bool, dialoguer::Error> {
     }
 }
 
-pub fn file_conflict_prompt(name: &str, items: Vec<String>) -> usize {
+pub fn file_conflict_prompt(prompt: String, items: Vec<String>) -> usize {
     return Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("Please select which item to operate on.")
+        .with_prompt(prompt)
         .items(&items)
         .interact()
         .unwrap();
@@ -149,4 +147,16 @@ pub fn is_quiet(quiet: Option<bool>) -> bool {
     } else {
         false
     }
+}
+
+pub fn print_success(message: String) {
+    println!("{} {}", "✓".cyan(), message.bold())
+}
+
+pub fn print_error(output: String) {
+    println!("{}", output.as_str().red())
+}
+
+pub fn pb_print_error(pb: &ProgressBar, output: String) {
+    pb.println(format!("{}", output.as_str().red()))
 }

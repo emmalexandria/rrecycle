@@ -41,8 +41,15 @@ impl FileErr {
 
 impl Error for FileErr {}
 
+///Returns a losslessly converted string if possible, but if that errors return the lossy conversion.
+//This is done because this function is used pretty much everywhere. Currently has 12 uses and counting.
+//While it may cause issues in some edge case, I'd rather avoid matching or unwrapping Options everywhere
+//and what am I gonna do if the path contains non valid unicode anyway? Die?
 pub fn path_to_string<P: AsRef<Path>>(path: P) -> String {
-    path.as_ref().to_string_lossy().to_string()
+    match path.as_ref().to_str() {
+        Some(s) => s.to_string(),
+        None => path.as_ref().to_string_lossy().to_string(),
+    }
 }
 
 pub fn run_op_on_dir_recursive<T>(
@@ -92,7 +99,10 @@ pub fn select_file_from_trash(name: &String) -> Option<TrashItem> {
             })
             .collect();
 
-        let selection = output::file_conflict_prompt(&name, item_names);
+        let selection = output::file_conflict_prompt(
+            "Please select which file to operate on.".to_string(),
+            item_names,
+        );
 
         return Some(items[selection].clone());
     }
