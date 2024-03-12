@@ -77,7 +77,7 @@ where
 }
 
 /// Function to resolve conflicts when multiple files have the same name
-pub fn select_file_from_trash(name: &String) -> Option<TrashItem> {
+pub fn select_from_trash(name: &String) -> Option<TrashItem> {
     let mut items: Vec<TrashItem> = Vec::new();
 
     for item in os_limited::list().unwrap() {
@@ -111,30 +111,38 @@ pub fn select_file_from_trash(name: &String) -> Option<TrashItem> {
     None
 }
 
-pub fn overwrite_file(mut file: &File) -> std::io::Result<()> {
+pub fn overwrite_file(file: &mut File) -> std::io::Result<()> {
     if file.metadata()?.is_dir() {
         return Ok(());
     }
 
-    let buf: [u8; SHRED_BUFFER_SIZE] = [0; SHRED_BUFFER_SIZE];
+    file.seek(io::SeekFrom::Start(0))?;
 
-    let file_size = file.metadata()?.len();
+    let buf: [u8; SHRED_BUFFER_SIZE] = [0u8; SHRED_BUFFER_SIZE];
 
     for _ in 0..SHRED_RUNS {
-        for _ in 0..(file_size / SHRED_BUFFER_SIZE as u64) {
-            file.write(&buf)?;
+        loop {
+            let remaining_len: usize = calc_remaining_len_in_file(file)?.try_into().unwrap();
+            if remaining_len >= SHRED_BUFFER_SIZE {
+                file.write(&buf)?;
+            } else {
+                file.write(&vec![0u8; remaining_len])?;
+                break;
+            }
         }
 
-        let remaining_bytes = (file_size - file.stream_position()?) as usize;
-        if remaining_bytes > 0 {
-            file.write(&vec![0; remaining_bytes])?;
-        }
         file.flush()?;
-
-        file.seek(io::SeekFrom::Start(0))?;
     }
 
     Ok(())
+}
+
+fn calc_remaining_len_in_file(file: &mut File) -> std::io::Result<u64> {
+    let current = file.seek(io::SeekFrom::Current(0))?;
+    let end = file.seek(io::SeekFrom::End(0))?;
+    file.seek(io::SeekFrom::Start(current))?;
+
+    Ok(end - current)
 }
 
 pub fn remove_file_or_dir(path: &PathBuf) -> std::io::Result<()> {
@@ -146,4 +154,101 @@ pub fn remove_file_or_dir(path: &PathBuf) -> std::io::Result<()> {
         return fs::remove_dir(path);
     }
     return fs::remove_file(path);
+}
+
+#[cfg(test)]
+mod tests {
+    use rand::distributions::{Alphanumeric, DistString};
+    use std::{fs::OpenOptions, io::Read};
+
+    use super::*;
+
+    #[test]
+    fn test_select_from_trash_exists() {
+        let filename = generate_random_filename();
+
+        File::create(&filename).unwrap();
+        trash::delete(&filename).unwrap();
+
+        let selected = select_from_trash(&filename);
+
+        assert!(selected.is_some());
+
+        os_limited::purge_all([selected.unwrap()]).unwrap();
+    }
+
+    #[test]
+    fn test_select_from_trash_fails() {
+        assert!(select_from_trash(&generate_random_filename()).is_none());
+    }
+
+    fn is_file_of_single_byte(mut file: &File, byte: u8) -> bool {
+        let file_len: usize = file.metadata().unwrap().len().try_into().unwrap();
+        let mut buf = Vec::<u8>::with_capacity(file_len);
+        file.seek(io::SeekFrom::Start(0)).unwrap();
+        file.read_to_end(&mut buf).unwrap();
+
+        if buf != Vec::<u8>::from(vec![byte; file_len]) {
+            println!("{}/{}", buf.len(), file_len);
+            return false;
+        }
+        return true;
+    }
+
+    #[test]
+    fn test_is_file_of_single_byte() {
+        //can't just use rand file name, must use seperate paths to avoid weird issues with creating a file immediately after deleting it
+        let filename = generate_random_filename();
+
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .read(true)
+            .open(&filename)
+            .unwrap();
+
+        //write 512MB of data to the test file (MB not MiB)
+        let ones = vec![1u8; 128 * (10 ^ 6)];
+        file.write_all(&ones).unwrap();
+        file.flush().unwrap();
+
+        if !is_file_of_single_byte(&file, 1u8) {
+            fs::remove_file(&filename).unwrap();
+
+            panic!()
+        } else {
+            fs::remove_file(&filename).unwrap();
+        }
+    }
+
+    #[test]
+    fn test_overwrite_file() {
+        let filename = generate_random_filename();
+
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .read(true)
+            .open(&filename)
+            .unwrap();
+
+        //write 512MB of data to the test file (MB not MiB)
+        let ones = vec![1u8; 1usize * (10usize.pow(6))];
+        file.write_all(&ones).unwrap();
+        file.flush().unwrap();
+
+        overwrite_file(&mut file).unwrap();
+
+        if !is_file_of_single_byte(&file, 0u8) {
+            panic!();
+        } else {
+            fs::remove_file(&filename).unwrap();
+        }
+    }
+
+    fn generate_random_filename() -> String {
+        return Alphanumeric.sample_string(&mut rand::thread_rng(), 8)
+            + "."
+            + &Alphanumeric.sample_string(&mut rand::thread_rng(), 3);
+    }
 }

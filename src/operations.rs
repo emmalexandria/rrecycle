@@ -106,7 +106,7 @@ impl BasicOperations {
             }
         } else {
             for file in &args.files {
-                match files::select_file_from_trash(file) {
+                match files::select_from_trash(file) {
                     Some(f) => files.push(f),
                     None => pb.println(format!(
                         "{} {}",
@@ -221,7 +221,7 @@ impl RestoreOperation {
 
     ///Attempt to restore a single file, returning Ok(true) if the file existed in the trash, and Ok(false) if the file did not.
     fn restore_single(file: &String) -> Result<bool, trash::Error> {
-        let trash_item = files::select_file_from_trash(file);
+        let trash_item = files::select_from_trash(file);
         match trash_item {
             Some(i) => {
                 os_limited::restore_all(vec![i])?;
@@ -328,11 +328,11 @@ impl ShredOperation {
 impl RecursiveOperation for ShredOperation {
     fn cb(path: &PathBuf) -> Result<(), FileErr> {
         if !path.is_dir() {
-            let file = OpenOptions::new()
+            let mut file = OpenOptions::new()
                 .write(true)
                 .open(path)
                 .map_err(|e| FileErr::map(e, path))?;
-            files::overwrite_file(&file).map_err(|e| FileErr::map(e, path))?;
+            files::overwrite_file(&mut file).map_err(|e| FileErr::map(e, path))?;
         }
 
         files::remove_file_or_dir(path).map_err(|e| FileErr::map(e, path))?;

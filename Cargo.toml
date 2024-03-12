@@ -14,3 +14,6 @@ indicatif = "0.17.8"
 prettytable = "0.10.0"
 terminal_size = "0.3.0"
 trash = "4.0.0"
+
+[dev-dependencies]
+rand = "0.8.5"

@@ -15,28 +15,33 @@ where
     }
 }
 
-#[test]
-fn test_remove_string_from_vec() {
-    let mut vec = vec!["Hello".to_string(), "Hi".to_string()];
-    remove_string_from_vec(&mut vec, "Hi".to_string());
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    assert_eq!(vec, vec!["Hello".to_string()]);
+    #[test]
+    fn test_remove_string_from_vec() {
+        let mut vec = vec!["Hello".to_string(), "Hi".to_string()];
+        remove_string_from_vec(&mut vec, "Hi".to_string());
 
-    let mut vec = vec!["Hello", "Hi"];
-    remove_string_from_vec(&mut vec, "Hi");
+        assert_eq!(vec, vec!["Hello".to_string()]);
 
-    assert_eq!(vec, vec!["Hello"]);
-}
+        let mut vec = vec!["Hello", "Hi"];
+        remove_string_from_vec(&mut vec, "Hi");
 
-#[test]
-fn test_remove_first_string_from_vec() {
-    let mut vec = vec!["Hello".to_string(), "Hi".to_string(), "Hi".to_string()];
-    remove_first_string_from_vec(&mut vec, "Hi".to_string());
+        assert_eq!(vec, vec!["Hello"]);
+    }
 
-    assert_eq!(vec, vec!["Hello".to_string(), "Hi".to_string()]);
+    #[test]
+    fn test_remove_first_string_from_vec() {
+        let mut vec = vec!["Hello".to_string(), "Hi".to_string(), "Hi".to_string()];
+        remove_first_string_from_vec(&mut vec, "Hi".to_string());
 
-    let mut vec = vec!["Hello", "Hi", "Hi"];
-    remove_first_string_from_vec(&mut vec, "Hi");
+        assert_eq!(vec, vec!["Hello".to_string(), "Hi".to_string()]);
 
-    assert_eq!(vec, vec!["Hello", "Hi"]);
+        let mut vec = vec!["Hello", "Hi", "Hi"];
+        remove_first_string_from_vec(&mut vec, "Hi");
+
+        assert_eq!(vec, vec!["Hello", "Hi"]);
+    }
 }
