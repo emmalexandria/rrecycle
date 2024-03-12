@@ -40,16 +40,16 @@ impl Display for OperationError {
             OPERATION::DELETE => "deleting",
             OPERATION::TRASH => "trashing",
             OPERATION::RESTORE => "restoring",
-            OPERATION::SHRED { trash_relative } => "shredding",
+            OPERATION::SHRED { trash_relative: _ } => "shredding",
             OPERATION::PURGE { all_files: _ } => "purging",
             _ => "",
         };
         if self.operation == OPERATION::LIST {
-            return write!(
+            write!(
                 f,
                 "Error while getting trash list: {}",
-                self.err.to_string()
-            );
+                self.err
+            )
         } else {
             let file;
             if self.file.is_some() {
@@ -57,13 +57,13 @@ impl Display for OperationError {
             } else {
                 file = "[no file set]".to_string()
             }
-            return write!(
+            write!(
                 f,
                 "Error while {} {}: {}",
                 op_string,
                 file,
-                self.err.to_string()
-            );
+                self.err
+            )
         }
     }
 }
@@ -83,13 +83,13 @@ impl BasicOperations {
     pub fn list() -> Result<(), OperationError> {
         match os_limited::list() {
             Ok(l) => match output::print_trash_table(l) {
-                Ok(_) => return Ok(()),
+                Ok(_) => Ok(()),
                 Err(e) => {
-                    return Err(OperationError::new(Box::new(e), OPERATION::LIST, None));
+                    Err(OperationError::new(Box::new(e), OPERATION::LIST, None))
                 }
             },
             Err(e) => {
-                return Err(OperationError::new(Box::new(e), OPERATION::LIST, None));
+                Err(OperationError::new(Box::new(e), OPERATION::LIST, None))
             }
         }
     }
@@ -146,12 +146,12 @@ impl BasicOperations {
         match trash::delete_all(files) {
             Ok(_) => {
                 output::print_success(format!("Trashed {} files", len));
-                return Ok(());
+                Ok(())
             }
             Err(e) => {
-                return Err(OperationError::new(Box::new(e), OPERATION::TRASH, None));
+                Err(OperationError::new(Box::new(e), OPERATION::TRASH, None))
             }
-        };
+        }
     }
 }
 
@@ -216,7 +216,7 @@ impl RestoreOperation {
             }
         }
 
-        return Ok(None);
+        Ok(None)
     }
 
     ///Attempt to restore a single file, returning Ok(true) if the file existed in the trash, and Ok(false) if the file did not.
@@ -247,9 +247,9 @@ impl RestoreOperation {
                 //This function modifies a vec reference in place, so theres no need for a return value
                 util::remove_first_string_from_vec(files, path.to_string());
 
-                return Ok(files::path_to_string(path_buf));
+                Ok(files::path_to_string(path_buf))
             }
-            _ => return Err(error),
+            _ => Err(error),
         }
     }
 }
@@ -266,13 +266,13 @@ impl DeleteOperation {
         match recurse_op(self, OPERATION::DELETE, args) {
             Ok(c) => {
                 output::finish_spinner_with_prefix(&self.pb, &format!("Removed {c} files"));
-                return Ok(());
+                Ok(())
             }
             Err(e) => {
                 self.pb.finish_and_clear();
-                return Err(e);
+                Err(e)
             }
-        };
+        }
     }
 }
 
@@ -281,7 +281,7 @@ impl RecursiveOperation for DeleteOperation {
         if path.is_dir() {
             return fs::remove_dir(path).map_err(|e| FileErr::map(e, path));
         }
-        return fs::remove_file(path).map_err(|e| FileErr::map(e, path));
+        fs::remove_file(path).map_err(|e| FileErr::map(e, path))
     }
 
     fn display_cb(&mut self, path: &PathBuf, is_dir: bool) {
@@ -297,7 +297,7 @@ impl RecursiveOperation for DeleteOperation {
     }
 
     fn get_spinner(&self) -> &ProgressBar {
-        return &self.pb;
+        &self.pb
     }
 }
 
@@ -315,13 +315,13 @@ impl ShredOperation {
         match recurse_op(self, OPERATION::SHRED { trash_relative }, args) {
             Ok(c) => {
                 output::finish_spinner_with_prefix(&self.pb, &format!("Shredded {c} files"));
-                return Ok(());
+                Ok(())
             }
             Err(e) => {
                 self.pb.finish_and_clear();
-                return Err(e);
+                Err(e)
             }
-        };
+        }
     }
 }
 
@@ -353,7 +353,7 @@ impl RecursiveOperation for ShredOperation {
     }
 
     fn get_spinner(&self) -> &ProgressBar {
-        return &self.pb;
+        &self.pb
     }
 }
 
@@ -368,16 +368,14 @@ where
         if !path.exists() {
             op.get_spinner().println(format!(
                 "{} {}",
-                files::path_to_string(&path).red(),
+                files::path_to_string(path).red(),
                 "does not exist, skipping".red(),
             ));
             continue;
         }
         if path.is_dir() {
-            if args.recurse.is_some_and(|a| a == true) {
-                if !prompt_recursion(path.to_str().unwrap().to_string()).unwrap() {
-                    continue;
-                }
+            if args.recurse.is_some_and(|a| a) && !prompt_recursion(path.to_str().unwrap().to_string()).unwrap() {
+                continue;
             }
             match files::run_op_on_dir_recursive::<T>(op, path, 0) {
                 Ok(c) => counter += c,

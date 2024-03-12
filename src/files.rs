@@ -138,7 +138,7 @@ pub fn overwrite_file(file: &mut File) -> std::io::Result<()> {
 }
 
 fn calc_remaining_len_in_file(file: &mut File) -> std::io::Result<u64> {
-    let current = file.seek(io::SeekFrom::Current(0))?;
+    let current = file.stream_position()?;
     let end = file.seek(io::SeekFrom::End(0))?;
     file.seek(io::SeekFrom::Start(current))?;
 
@@ -153,7 +153,7 @@ pub fn remove_file_or_dir(path: &PathBuf) -> std::io::Result<()> {
     if path.is_dir() {
         return fs::remove_dir(path);
     }
-    return fs::remove_file(path);
+    fs::remove_file(path)
 }
 
 #[cfg(test)]
@@ -188,11 +188,11 @@ mod tests {
         file.seek(io::SeekFrom::Start(0)).unwrap();
         file.read_to_end(&mut buf).unwrap();
 
-        if buf != Vec::<u8>::from(vec![byte; file_len]) {
+        if buf != vec![byte; file_len] {
             println!("{}/{}", buf.len(), file_len);
             return false;
         }
-        return true;
+        true
     }
 
     #[test]
@@ -233,7 +233,7 @@ mod tests {
             .unwrap();
 
         //write 512MB of data to the test file (MB not MiB)
-        let ones = vec![1u8; 1usize * (10usize.pow(6))];
+        let ones = vec![1u8; 10usize.pow(6)];
         file.write_all(&ones).unwrap();
         file.flush().unwrap();
 
@@ -247,8 +247,8 @@ mod tests {
     }
 
     fn generate_random_filename() -> String {
-        return Alphanumeric.sample_string(&mut rand::thread_rng(), 8)
+        Alphanumeric.sample_string(&mut rand::thread_rng(), 8)
             + "."
-            + &Alphanumeric.sample_string(&mut rand::thread_rng(), 3);
+            + &Alphanumeric.sample_string(&mut rand::thread_rng(), 3)
     }
 }

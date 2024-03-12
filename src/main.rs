@@ -27,7 +27,7 @@ impl OPERATION {
             };
         }
 
-        if args.files.len() == 0 {
+        if args.files.is_empty() {
             return OPERATION::NONE;
         }
 
@@ -46,7 +46,7 @@ impl OPERATION {
             };
         }
 
-        return OPERATION::NONE;
+        OPERATION::NONE
     }
 }
 

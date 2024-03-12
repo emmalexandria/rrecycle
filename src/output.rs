@@ -95,20 +95,16 @@ fn get_sized_table(items: &Vec<TrashItem>, format: &TableFormat) -> Table {
         }
     }
 
-    return table;
+    table
 }
 
 pub fn prompt_recursion(path: String) -> Result<bool, dialoguer::Error> {
-    match dialoguer::Confirm::with_theme(&ColorfulTheme::default())
+    dialoguer::Confirm::with_theme(&ColorfulTheme::default())
         .with_prompt(format!(
             "{} is a directory. Perform operation recursively?",
             path
         ))
         .interact()
-    {
-        Ok(b) => return Ok(b),
-        Err(e) => return Err(e),
-    }
 }
 
 pub fn file_conflict_prompt(prompt: String, items: Vec<String>) -> usize {
@@ -129,7 +125,7 @@ pub fn get_spinner() -> ProgressBar {
         .with_style(style)
         .with_finish(ProgressFinish::AndLeave);
     pb.enable_steady_tick(Duration::from_millis(200));
-    return pb;
+    pb
 }
 
 //Slightly weird way we have to set the progressbar to avoid an empty prefix adding spaces between the finish char
