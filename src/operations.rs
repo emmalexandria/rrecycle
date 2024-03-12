@@ -199,7 +199,12 @@ impl RestoreOperation {
                     }
                 }
                 Err(e) => match Self::handle_collision(e, &mut new_files, &path) {
-                    Ok(_) => continue,
+                    Ok(s) => {
+                        output::print_error(format!(
+                            "File already exists at path {}, skipping...",
+                            s
+                        ));
+                    }
                     Err(inner_e) => {
                         return Err(OperationError::new(
                             Box::new(inner_e),
@@ -230,7 +235,7 @@ impl RestoreOperation {
         error: trash::Error,
         files: &mut Vec<String>,
         path: &String,
-    ) -> Result<(), trash::Error> {
+    ) -> Result<String, trash::Error> {
         //RestoreTwins is also technically an error that we could handle in a similar way, but with how this program works its unecessary
         //RestoreTwins requires that the user passes in two files that have the same name (referencing them in another way), but because
         //we do not allow the user to reference two items that could have the same path anyway, it can go unhandled
@@ -239,15 +244,10 @@ impl RestoreOperation {
                 path: path_buf,
                 remaining_items: _,
             } => {
-                output::print_error(format!(
-                    "File already exists at path {}, skipping...",
-                    files::path_to_string(&path_buf)
-                ));
-
                 //This function modifies a vec reference in place, so theres no need for a return value
                 util::remove_first_string_from_vec(files, path.to_string());
 
-                return Ok(());
+                return Ok(files::path_to_string(path_buf));
             }
             _ => return Err(error),
         }
@@ -387,6 +387,7 @@ where
                 }
             };
         } else {
+            op.display_cb(&PathBuf::from(path), false);
             match T::cb(&PathBuf::from(path)) {
                 Ok(_) => counter += 1,
                 Err(e) => {

@@ -141,14 +141,6 @@ pub fn finish_spinner_with_prefix(pb: &ProgressBar, message: &str) {
     pb.finish();
 }
 
-pub fn is_quiet(quiet: Option<bool>) -> bool {
-    if quiet.is_some_and(|q| q == true) {
-        true
-    } else {
-        false
-    }
-}
-
 pub fn print_success(message: String) {
     println!("{} {}", "✓".cyan(), message.bold())
 }

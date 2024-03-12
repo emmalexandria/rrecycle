@@ -87,12 +87,6 @@ struct Args {
         description = "recurse through directories without user confirmation"
     )]
     recurse: Option<bool>,
-    #[argh(
-        switch,
-        short = 'q',
-        description = "turn off nearly all output besides recursion prompts"
-    )]
-    quiet: Option<bool>,
 
     #[argh(positional)]
     files: Vec<String>,
