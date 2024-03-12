@@ -72,7 +72,7 @@ struct Args {
     #[argh(
         switch,
         short = 's',
-        description = "shred a file (overwrite and then delete). can be combined with -p to shred a file in the trash bin"
+        description = "shred a file (overwrite and then delete)"
     )]
     shred: Option<bool>,
     #[argh(
