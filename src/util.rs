@@ -1,7 +1,3 @@
-use std::path::PathBuf;
-
-use trash::TrashItem;
-
 ///This function is literally completely pointless but it took pain to write (before I found out that retain exists), so I'm keeping it.
 pub fn remove_string_from_vec<T: AsRef<str>>(vec: &mut Vec<T>, needle: T)
 where

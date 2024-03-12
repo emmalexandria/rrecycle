@@ -1,18 +1,15 @@
-use core::fmt;
 use std::{
     error::Error,
     fmt::Display,
-    fs::{self, DirEntry, File, OpenOptions},
-    io::{self, ErrorKind, Seek, Write},
-    path::{self, Path, PathBuf},
+    fs::{self, File},
+    io::{self, Seek, Write},
+    path::{Path, PathBuf},
 };
 use trash::{os_limited, TrashItem};
 
-use colored::Colorize;
-
 use crate::{
     operations::RecursiveOperation,
-    output::{self, format_unix_date, prompt_recursion},
+    output::{self, format_unix_date},
 };
 
 const SHRED_RUNS: u32 = 1;

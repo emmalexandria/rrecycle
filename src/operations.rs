@@ -1,12 +1,8 @@
 use std::{
-    borrow::Cow,
     error::Error,
-    fmt::{write, Display},
-    fs::{self, File, OpenOptions},
-    io::Write,
+    fmt::Display,
+    fs::{self, OpenOptions},
     path::{Path, PathBuf},
-    thread,
-    time::Duration,
 };
 
 use colored::Colorize;
@@ -17,8 +13,8 @@ use trash::{
 };
 
 use crate::{
-    files::{self, path_to_string, run_op_on_dir_recursive, FileErr},
-    output::{self, finish_spinner_with_prefix, get_spinner, is_quiet, prompt_recursion},
+    files::{self, FileErr},
+    output::{self, get_spinner, prompt_recursion},
     util, Args, OPERATION,
 };
 
@@ -45,7 +41,7 @@ impl Display for OperationError {
             OPERATION::TRASH => "trashing",
             OPERATION::RESTORE => "restoring",
             OPERATION::SHRED { trash_relative } => "shredding",
-            OPERATION::PURGE { all_files } => "purging",
+            OPERATION::PURGE { all_files: _ } => "purging",
             _ => "",
         };
         if self.operation == OPERATION::LIST {
@@ -127,7 +123,7 @@ impl BasicOperations {
             purge_all(vec![file]).unwrap();
         }
 
-        finish_spinner_with_prefix(&pb, "Files purged");
+        output::finish_spinner_with_prefix(&pb, "Files purged");
 
         Ok(())
     }
@@ -141,13 +137,17 @@ impl BasicOperations {
             } else {
                 output::print_error(format!(
                     "{} does not exist, skipping...",
-                    path_to_string(path)
+                    files::path_to_string(path)
                 ));
             }
         }
 
+        let len = files.len();
         match trash::delete_all(files) {
-            Ok(_) => return Ok(()),
+            Ok(_) => {
+                output::print_success(format!("Trashed {} files", len));
+                return Ok(());
+            }
             Err(e) => {
                 return Err(OperationError::new(Box::new(e), OPERATION::TRASH, None));
             }
@@ -237,7 +237,7 @@ impl RestoreOperation {
         match error {
             trash::Error::RestoreCollision {
                 path: path_buf,
-                remaining_items,
+                remaining_items: _,
             } => {
                 output::print_error(format!(
                     "File already exists at path {}, skipping...",
@@ -265,7 +265,7 @@ impl DeleteOperation {
     fn operate(&mut self, args: &Args) -> Result<(), OperationError> {
         match recurse_op(self, OPERATION::DELETE, args) {
             Ok(c) => {
-                finish_spinner_with_prefix(&self.pb, &format!("Removed {c} files"));
+                output::finish_spinner_with_prefix(&self.pb, &format!("Removed {c} files"));
                 return Ok(());
             }
             Err(e) => {
@@ -314,7 +314,7 @@ impl ShredOperation {
     fn operate(&mut self, args: &Args, trash_relative: bool) -> Result<(), OperationError> {
         match recurse_op(self, OPERATION::SHRED { trash_relative }, args) {
             Ok(c) => {
-                finish_spinner_with_prefix(&self.pb, &format!("Shredded {c} files"));
+                output::finish_spinner_with_prefix(&self.pb, &format!("Shredded {c} files"));
                 return Ok(());
             }
             Err(e) => {
@@ -388,7 +388,7 @@ where
             };
         } else {
             match T::cb(&PathBuf::from(path)) {
-                Ok(c) => counter += 1,
+                Ok(_) => counter += 1,
                 Err(e) => {
                     let file = e.file.clone();
                     return Err(OperationError::new(Box::new(e), op_type, Some(file)));

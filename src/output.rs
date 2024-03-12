@@ -8,11 +8,11 @@ use dialoguer::{theme::ColorfulTheme, Select};
 use indicatif::{ProgressBar, ProgressFinish, ProgressStyle};
 use prettytable::{
     format::{self, FormatBuilder, TableFormat},
-    row, Row, Table,
+    row, Table,
 };
 use trash::TrashItem;
 
-use crate::{files, util};
+use crate::files;
 
 pub fn format_unix_date(time: i64) -> String {
     chrono::Local
@@ -155,8 +155,4 @@ pub fn print_success(message: String) {
 
 pub fn print_error(output: String) {
     println!("{}", output.as_str().red())
-}
-
-pub fn pb_print_error(pb: &ProgressBar, output: String) {
-    pb.println(format!("{}", output.as_str().red()))
 }

@@ -1,8 +1,3 @@
-use std::{
-    path::{self, Path},
-    process::ExitCode,
-};
-
 use argh::FromArgs;
 
 mod files;
