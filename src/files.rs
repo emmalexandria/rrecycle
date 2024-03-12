@@ -240,6 +240,7 @@ mod tests {
         overwrite_file(&mut file).unwrap();
 
         if !is_file_of_single_byte(&file, 0u8) {
+            fs::remove_file(&filename).unwrap();
             panic!();
         } else {
             fs::remove_file(&filename).unwrap();
