@@ -18,7 +18,7 @@ use trash::{
 
 use crate::{
     files::{self, path_to_string, run_op_on_dir_recursive, FileErr},
-    output::{self, finish_spinner_with_prefix, get_spinner, prompt_recursion},
+    output::{self, finish_spinner_with_prefix, get_spinner, is_quiet, prompt_recursion},
     util, Args, OPERATION,
 };
 
@@ -142,7 +142,7 @@ impl BasicOperations {
                 println!(
                     "{} {}",
                     path_to_string(path).red(),
-                    "does not exist, skipping..."
+                    "does not exist, skipping...".red()
                 );
             }
         }

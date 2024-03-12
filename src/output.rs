@@ -143,5 +143,10 @@ pub fn finish_spinner_with_prefix(pb: &ProgressBar, message: &str) {
     pb.finish();
 }
 
-///Function to mimic the finishing line of a progress bar for code that does not use a progress bar
-pub fn print_finish_line() {}
+pub fn is_quiet(quiet: Option<bool>) -> bool {
+    if quiet.is_some_and(|q| q == true) {
+        true
+    } else {
+        false
+    }
+}
