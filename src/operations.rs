@@ -210,10 +210,6 @@ impl RestoreOperation {
     }
 }
 
-pub struct TrashOperation;
-
-impl TrashOperation {}
-
 pub struct DeleteOperation {
     pb: ProgressBar,
 }
