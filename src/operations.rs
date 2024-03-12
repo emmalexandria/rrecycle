@@ -131,6 +131,29 @@ impl BasicOperations {
 
         Ok(())
     }
+
+    pub fn trash(args: &Args) -> Result<(), OperationError> {
+        let mut files = Vec::<&Path>::new();
+        for path in &args.files {
+            let p = Path::new(path);
+            if p.exists() {
+                files.push(p);
+            } else {
+                println!(
+                    "{} {}",
+                    path_to_string(path).red(),
+                    "does not exist, skipping..."
+                );
+            }
+        }
+
+        match trash::delete_all(files) {
+            Ok(_) => return Ok(()),
+            Err(e) => {
+                return Err(OperationError::new(Box::new(e), OPERATION::TRASH, None));
+            }
+        };
+    }
 }
 
 pub struct RestoreOperation;
@@ -189,30 +212,7 @@ impl RestoreOperation {
 
 pub struct TrashOperation;
 
-impl TrashOperation {
-    fn operate(args: &Args) -> Result<(), OperationError> {
-        let mut files = Vec::<&Path>::new();
-        for path in &args.files {
-            let p = Path::new(path);
-            if p.exists() {
-                files.push(p);
-            } else {
-                println!(
-                    "{} {}",
-                    path_to_string(path).red(),
-                    "does not exist, skipping..."
-                );
-            }
-        }
-
-        match trash::delete_all(files) {
-            Ok(_) => return Ok(()),
-            Err(e) => {
-                return Err(OperationError::new(Box::new(e), OPERATION::TRASH, None));
-            }
-        };
-    }
-}
+impl TrashOperation {}
 
 pub struct DeleteOperation {
     pb: ProgressBar,
@@ -372,7 +372,7 @@ pub fn run_operation(operation: OPERATION, args: Args) -> Result<(), OperationEr
         OPERATION::LIST => BasicOperations::list(),
         OPERATION::PURGE { all_files } => BasicOperations::purge(&args, all_files),
         OPERATION::DELETE => DeleteOperation::default().operate(&args),
-        OPERATION::TRASH => TrashOperation::operate(&args),
+        OPERATION::TRASH => BasicOperations::trash(&args),
         OPERATION::SHRED { trash_relative } => {
             ShredOperation::default().operate(&args, trash_relative)
         }
