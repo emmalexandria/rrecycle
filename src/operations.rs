@@ -26,7 +26,7 @@ pub struct OperationError {
 }
 
 pub trait RecursiveOperation {
-    fn cb(path: &PathBuf) -> Result<(), FileErr>;
+    fn cb(&self, path: &PathBuf) -> Result<(), FileErr>;
     fn display_cb(&mut self, path: &PathBuf, is_dir: bool);
 
     fn get_spinner(&self) -> &ProgressBar;
@@ -262,7 +262,7 @@ impl DeleteOperation {
 }
 
 impl RecursiveOperation for DeleteOperation {
-    fn cb(path: &PathBuf) -> Result<(), FileErr> {
+    fn cb(&self, path: &PathBuf) -> Result<(), FileErr> {
         if path.is_dir() {
             return fs::remove_dir(path).map_err(|e| FileErr::map(e, path));
         }
@@ -288,11 +288,13 @@ impl RecursiveOperation for DeleteOperation {
 
 struct ShredOperation {
     pb: ProgressBar,
+    num_runs: usize,
 }
 impl ShredOperation {
-    fn default() -> ShredOperation {
+    fn default(args: &Args) -> ShredOperation {
         ShredOperation {
             pb: output::get_spinner(),
+            num_runs: args.ow_num,
         }
     }
 
@@ -311,13 +313,13 @@ impl ShredOperation {
 }
 
 impl RecursiveOperation for ShredOperation {
-    fn cb(path: &PathBuf) -> Result<(), FileErr> {
+    fn cb(&self, path: &PathBuf) -> Result<(), FileErr> {
         if !path.is_dir() {
             let mut file = OpenOptions::new()
                 .write(true)
                 .open(path)
                 .map_err(|e| FileErr::map(e, path))?;
-            files::overwrite_file(&mut file).map_err(|e| FileErr::map(e, path))?;
+            files::overwrite_file(&mut file, self.num_runs).map_err(|e| FileErr::map(e, path))?;
         }
 
         files::remove_file_or_dir(path).map_err(|e| FileErr::map(e, path))?;
@@ -373,7 +375,7 @@ where
             };
         } else {
             op.display_cb(&PathBuf::from(path), false);
-            match T::cb(&PathBuf::from(path)) {
+            match op.cb(&PathBuf::from(path)) {
                 Ok(_) => counter += 1,
                 Err(e) => {
                     let file = e.file.clone();
@@ -394,7 +396,7 @@ pub fn run_operation(operation: OPERATION, args: Args) -> Result<(), OperationEr
         OPERATION::DELETE => DeleteOperation::default().operate(&args),
         OPERATION::TRASH => BasicOperations::trash(&args),
         OPERATION::SHRED { trash_relative } => {
-            ShredOperation::default().operate(&args, trash_relative)
+            ShredOperation::default(&args).operate(&args, trash_relative)
         }
         OPERATION::NONE => Ok(()),
     }

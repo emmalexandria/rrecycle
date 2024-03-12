@@ -60,7 +60,7 @@ struct Args {
     #[argh(
         switch,
         short = 'p',
-        description = "delete a file from the trash bin. deletes all if '*' is passed"
+        description = "delete a file from the trash. deletes all if '*' is passed"
     )]
     purge: Option<bool>,
     #[argh(
@@ -75,6 +75,15 @@ struct Args {
         description = "shred a file (overwrite and then delete)"
     )]
     shred: Option<bool>,
+
+    #[argh(
+        option,
+        short = 'n',
+        description = "number of times to overwrite file when using -s (default=1)",
+        default = "1"
+    )]
+    ow_num: usize,
+
     #[argh(
         switch,
         short = 'l',

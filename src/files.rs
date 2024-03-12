@@ -12,9 +12,6 @@ use crate::{
     output::{self, format_unix_date},
 };
 
-const SHRED_RUNS: u32 = 1;
-const SHRED_BUFFER_SIZE: usize = 4096;
-
 #[derive(Debug)]
 pub struct FileErr {
     pub error: std::io::Error,
@@ -66,12 +63,12 @@ where
             } else {
                 count += 1;
                 operation.display_cb(&path, false);
-                T::cb(&path)?;
+                operation.cb(&path)?;
             }
         }
         count += 1;
         operation.display_cb(&PathBuf::from(dir), true);
-        T::cb(&PathBuf::from(dir))?;
+        operation.cb(&PathBuf::from(dir))?;
     }
     Ok(count)
 }
@@ -111,7 +108,8 @@ pub fn select_from_trash(name: &String) -> Option<TrashItem> {
     None
 }
 
-pub fn overwrite_file(file: &mut File) -> std::io::Result<()> {
+pub fn overwrite_file(file: &mut File, runs: usize) -> std::io::Result<()> {
+    const SHRED_BUFFER_SIZE: usize = 4096;
     if file.metadata()?.is_dir() {
         return Ok(());
     }
@@ -120,7 +118,7 @@ pub fn overwrite_file(file: &mut File) -> std::io::Result<()> {
 
     let buf: [u8; SHRED_BUFFER_SIZE] = [0u8; SHRED_BUFFER_SIZE];
 
-    for _ in 0..SHRED_RUNS {
+    for _ in 0..runs {
         loop {
             let remaining_len: usize = calc_remaining_len_in_file(file)?.try_into().unwrap();
             if remaining_len >= SHRED_BUFFER_SIZE {
@@ -237,7 +235,7 @@ mod tests {
         file.write_all(&ones).unwrap();
         file.flush().unwrap();
 
-        overwrite_file(&mut file).unwrap();
+        overwrite_file(&mut file, 1).unwrap();
 
         if !is_file_of_single_byte(&file, 0u8) {
             fs::remove_file(&filename).unwrap();
