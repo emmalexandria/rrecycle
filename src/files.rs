@@ -124,9 +124,9 @@ pub fn overwrite_file(file: &mut File) -> std::io::Result<()> {
         loop {
             let remaining_len: usize = calc_remaining_len_in_file(file)?.try_into().unwrap();
             if remaining_len >= SHRED_BUFFER_SIZE {
-                file.write(&buf)?;
+                file.write_all(&buf)?;
             } else {
-                file.write(&vec![0u8; remaining_len])?;
+                file.write_all(&vec![0u8; remaining_len])?;
                 break;
             }
         }
