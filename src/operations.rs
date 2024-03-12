@@ -82,10 +82,9 @@ impl OperationError {
     }
 }
 
-pub struct ListOperation;
-
-impl ListOperation {
-    fn operate() -> Result<(), OperationError> {
+pub struct BasicOperations;
+impl BasicOperations {
+    pub fn list() -> Result<(), OperationError> {
         match os_limited::list() {
             Ok(l) => match output::print_trash_table(l) {
                 Ok(_) => return Ok(()),
@@ -98,12 +97,7 @@ impl ListOperation {
             }
         }
     }
-}
-
-pub struct PurgeOperation;
-
-impl PurgeOperation {
-    fn operate(args: &Args, all_files: bool) -> Result<(), OperationError> {
+    pub fn purge(args: &Args, all_files: bool) -> Result<(), OperationError> {
         let mut files: Vec<TrashItem> = Vec::new();
 
         let pb = output::get_spinner();
@@ -375,8 +369,8 @@ where
 pub fn run_operation(operation: OPERATION, args: Args) -> Result<(), OperationError> {
     match operation {
         OPERATION::RESTORE => RestoreOperation::operate(&args),
-        OPERATION::LIST => ListOperation::operate(),
-        OPERATION::PURGE { all_files } => PurgeOperation::operate(&args, all_files),
+        OPERATION::LIST => BasicOperations::list(),
+        OPERATION::PURGE { all_files } => BasicOperations::purge(&args, all_files),
         OPERATION::DELETE => DeleteOperation::default().operate(&args),
         OPERATION::TRASH => TrashOperation::operate(&args),
         OPERATION::SHRED { trash_relative } => {
