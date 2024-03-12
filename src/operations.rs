@@ -7,29 +7,22 @@ use std::{
 
 use colored::Colorize;
 use indicatif::ProgressBar;
+use shred::{
+    files::{self, FileErr},
+    output, util, RecursiveOperation,
+};
 use trash::{
     os_limited::{self, purge_all},
     TrashItem,
 };
 
-use crate::{
-    files::{self, FileErr},
-    output::{self, get_spinner, prompt_recursion},
-    util, Args, OPERATION,
-};
+use crate::{Args, OPERATION};
 
 #[derive(Debug)]
 pub struct OperationError {
     pub err: Box<dyn Error>,
     pub operation: OPERATION,
     pub file: Option<String>,
-}
-
-pub trait RecursiveOperation {
-    fn cb(&self, path: &PathBuf) -> Result<(), FileErr>;
-    fn display_cb(&mut self, path: &PathBuf, is_dir: bool);
-
-    fn get_spinner(&self) -> &ProgressBar;
 }
 
 impl Error for OperationError {}
@@ -244,7 +237,9 @@ pub struct DeleteOperation {
 }
 impl DeleteOperation {
     fn default() -> DeleteOperation {
-        DeleteOperation { pb: get_spinner() }
+        DeleteOperation {
+            pb: output::get_spinner(),
+        }
     }
 
     fn operate(&mut self, args: &Args) -> Result<(), OperationError> {
@@ -362,7 +357,7 @@ where
         }
         if path.is_dir() {
             if args.recurse.is_some_and(|a| a)
-                && !prompt_recursion(path.to_str().unwrap().to_string()).unwrap()
+                && !output::prompt_recursion(path.to_str().unwrap().to_string()).unwrap()
             {
                 continue;
             }

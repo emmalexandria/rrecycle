@@ -2,14 +2,14 @@ use std::{
     error::Error,
     fmt::Display,
     fs::{self, File},
-    io::{self, Seek, Write},
+    io::{self, BufWriter, Seek, Write},
     path::{Path, PathBuf},
 };
 use trash::{os_limited, TrashItem};
 
 use crate::{
-    operations::RecursiveOperation,
     output::{self, format_unix_date},
+    RecursiveOperation,
 };
 
 #[derive(Debug)]
@@ -108,34 +108,37 @@ pub fn select_from_trash(name: &String) -> Option<TrashItem> {
     None
 }
 
-pub fn overwrite_file(file: &mut File, runs: usize) -> std::io::Result<()> {
+pub fn overwrite_file(mut file: &File, runs: usize) -> std::io::Result<()> {
     const SHRED_BUFFER_SIZE: usize = 4096;
     if file.metadata()?.is_dir() {
         return Ok(());
     }
 
-    file.seek(io::SeekFrom::Start(0))?;
+    let mut writer = BufWriter::new(file);
 
     let buf: [u8; SHRED_BUFFER_SIZE] = [0u8; SHRED_BUFFER_SIZE];
 
     for _ in 0..runs {
+        writer.seek(io::SeekFrom::Start(0))?;
         loop {
-            let remaining_len: usize = calc_remaining_len_in_file(file)?.try_into().unwrap();
+            let remaining_len: usize = calc_remaining_len_in_reader(&mut writer)?
+                .try_into()
+                .unwrap();
             if remaining_len >= SHRED_BUFFER_SIZE {
-                file.write_all(&buf)?;
+                writer.write_all(&buf)?;
             } else {
-                file.write_all(&vec![0u8; remaining_len])?;
+                writer.write_all(&vec![0u8; remaining_len])?;
                 break;
             }
         }
 
-        file.flush()?;
+        writer.flush()?;
     }
 
     Ok(())
 }
 
-fn calc_remaining_len_in_file(file: &mut File) -> std::io::Result<u64> {
+fn calc_remaining_len_in_reader(file: &mut BufWriter<&File>) -> std::io::Result<u64> {
     let current = file.stream_position()?;
     let end = file.seek(io::SeekFrom::End(0))?;
     file.seek(io::SeekFrom::Start(current))?;
@@ -160,7 +163,6 @@ mod tests {
     use std::{fs::OpenOptions, io::Read};
 
     use super::*;
-
     #[test]
     fn test_select_from_trash_exists() {
         let filename = generate_random_filename();
@@ -235,7 +237,7 @@ mod tests {
         file.write_all(&ones).unwrap();
         file.flush().unwrap();
 
-        overwrite_file(&mut file, 1).unwrap();
+        overwrite_file(&file, 1).unwrap();
 
         if !is_file_of_single_byte(&file, 0u8) {
             fs::remove_file(&filename).unwrap();

@@ -1,8 +1,6 @@
 use argh::FromArgs;
 
-mod files;
 mod operations;
-mod output;
 mod util;
 
 #[derive(Debug, PartialEq)]
@@ -50,8 +48,8 @@ impl OPERATION {
     }
 }
 
-#[derive(FromArgs)]
 ///Basic arguments
+#[derive(FromArgs)]
 struct Args {
     #[argh(switch, short = 't', description = "move a file to the trash bin")]
     trash: Option<bool>,
