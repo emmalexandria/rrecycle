@@ -11,8 +11,8 @@ use trash::{os_limited, TrashItem};
 use colored::Colorize;
 
 use crate::{
-    interface::{self, format_unix_date, prompt_recursion},
     operations::RecursiveOperation,
+    output::{self, format_unix_date, prompt_recursion},
 };
 
 const SHRED_RUNS: u32 = 1;
@@ -92,7 +92,7 @@ pub fn select_file_from_trash(name: &String) -> Option<TrashItem> {
             })
             .collect();
 
-        let selection = interface::file_conflict_prompt(&name, item_names);
+        let selection = output::file_conflict_prompt(&name, item_names);
 
         return Some(items[selection].clone());
     }

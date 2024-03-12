@@ -115,10 +115,7 @@ pub fn prompt_recursion(path: String) -> Result<bool, dialoguer::Error> {
 
 pub fn file_conflict_prompt(name: &str, items: Vec<String>) -> usize {
     return Select::with_theme(&ColorfulTheme::default())
-        .with_prompt(format!(
-            "Multiple items found in bin with the name {}",
-            name
-        ))
+        .with_prompt("Please select which item to operate on.")
         .items(&items)
         .interact()
         .unwrap();

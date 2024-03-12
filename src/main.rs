@@ -6,8 +6,8 @@ use std::{
 use argh::FromArgs;
 
 mod files;
-mod interface;
 mod operations;
+mod output;
 mod util;
 
 #[derive(Debug, PartialEq)]

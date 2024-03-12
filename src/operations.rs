@@ -17,8 +17,8 @@ use trash::{
 };
 
 use crate::{
-    files::{self, run_op_on_dir_recursive, FileErr},
-    interface::{self, finish_spinner_with_prefix, get_spinner, prompt_recursion},
+    files::{self, path_to_string, run_op_on_dir_recursive, FileErr},
+    output::{self, finish_spinner_with_prefix, get_spinner, prompt_recursion},
     util, Args, OPERATION,
 };
 
@@ -27,6 +27,13 @@ pub struct OperationError {
     pub err: Box<dyn Error>,
     pub operation: OPERATION,
     pub file: Option<String>,
+}
+
+pub trait RecursiveOperation {
+    fn cb(path: &PathBuf) -> Result<(), FileErr>;
+    fn display_cb(&mut self, path: &PathBuf, is_dir: bool);
+
+    fn get_spinner(&self) -> &ProgressBar;
 }
 
 impl Error for OperationError {}
@@ -75,19 +82,12 @@ impl OperationError {
     }
 }
 
-pub trait RecursiveOperation {
-    fn cb(path: &PathBuf) -> Result<(), FileErr>;
-    fn display_cb(&mut self, path: &PathBuf, is_dir: bool);
-
-    fn get_spinner(&self) -> &ProgressBar;
-}
-
 pub struct ListOperation;
 
 impl ListOperation {
     fn operate() -> Result<(), OperationError> {
         match os_limited::list() {
-            Ok(l) => match interface::print_trash_table(l) {
+            Ok(l) => match output::print_trash_table(l) {
                 Ok(_) => return Ok(()),
                 Err(e) => {
                     return Err(OperationError::new(Box::new(e), OPERATION::LIST, None));
@@ -106,7 +106,7 @@ impl PurgeOperation {
     fn operate(args: &Args, all_files: bool) -> Result<(), OperationError> {
         let mut files: Vec<TrashItem> = Vec::new();
 
-        let pb = interface::get_spinner();
+        let pb = output::get_spinner();
         if all_files {
             match os_limited::list() {
                 Ok(l) => files = l,
@@ -118,7 +118,11 @@ impl PurgeOperation {
             for file in &args.files {
                 match files::select_file_from_trash(file) {
                     Some(f) => files.push(f),
-                    None => pb.println(format!("{file} did not match any file in the recycle bin")),
+                    None => pb.println(format!(
+                        "{} {}",
+                        file.red(),
+                        "did not match any file in the recycle bin".red()
+                    )),
                 }
             }
         }
@@ -193,22 +197,26 @@ pub struct TrashOperation;
 
 impl TrashOperation {
     fn operate(args: &Args) -> Result<(), OperationError> {
-        for file in &args.files {
-            let path = Path::new(file);
-
-            match trash::delete(path) {
-                Ok(_) => return Ok(()),
-                Err(e) => {
-                    return Err(OperationError::new(
-                        Box::new(e),
-                        OPERATION::TRASH,
-                        Some(files::path_to_string(&path)),
-                    ));
-                }
-            };
+        let mut files = Vec::<&Path>::new();
+        for path in &args.files {
+            let p = Path::new(path);
+            if p.exists() {
+                files.push(p);
+            } else {
+                println!(
+                    "{} {}",
+                    path_to_string(path).red(),
+                    "does not exist, skipping..."
+                );
+            }
         }
 
-        Ok(())
+        match trash::delete_all(files) {
+            Ok(_) => return Ok(()),
+            Err(e) => {
+                return Err(OperationError::new(Box::new(e), OPERATION::TRASH, None));
+            }
+        };
     }
 }
 
@@ -268,7 +276,7 @@ struct ShredOperation {
 impl ShredOperation {
     fn default() -> ShredOperation {
         ShredOperation {
-            pb: interface::get_spinner(),
+            pb: output::get_spinner(),
         }
     }
 
