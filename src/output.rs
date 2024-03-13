@@ -1,4 +1,7 @@
-use std::time::Duration;
+use std::{
+    path::{self, PathBuf},
+    time::Duration,
+};
 
 use colored::Colorize;
 use terminal_size::terminal_size;
@@ -12,7 +15,7 @@ use prettytable::{
 };
 use trash::TrashItem;
 
-use shred_lib::files;
+use shred_lib::files::{self};
 
 pub fn format_unix_date(time: i64) -> String {
     chrono::Local
@@ -49,53 +52,50 @@ pub fn print_trash_table(items: Vec<TrashItem>) -> std::io::Result<()> {
     Ok(())
 }
 
-///This function is, in fact, a war crime. It loops over items three times, and is just generally fucking dumb. It contains magic numbers,
-/// unwrap statements that could panic, and other random bullshit. It works though.
 fn get_sized_table(items: &Vec<TrashItem>, format: &TableFormat) -> Table {
     //Hypothetical 'desired' table that may not be printed
     let mut table = Table::new();
-    let mut longest_row_len: usize = "Name".len() + "Original path".len() + "Time deleted".len();
 
     table.set_format(*format);
-
     table.set_titles(row![b->"Name", b->"Original path", b->"Time deleted"]);
 
-    for item in items {
-        let len = item.name.len()
-            + files::path_to_string(&item.original_path()).len()
-            + format_unix_date(item.time_deleted).len();
+    let title_len = "Name".len() + "Original path".len() + "Time deleted".len();
+    let len = items.iter().fold(0, |m, v| {
+        (v.name.len()
+            + files::path_to_string(&v.original_path()).len()
+            + format_unix_date(v.time_deleted).len())
+        .max(m)
+    });
 
-        if len > longest_row_len {
-            longest_row_len = len;
-        }
-    }
-
+    let max_len = len.max(title_len);
     let term_width: usize = terminal_size().unwrap().0 .0.into();
+    let path_start;
 
+    if max_len + 20 > term_width {
+        path_start = (max_len + 20) - term_width
+    } else {
+        path_start = 0
+    }
     //If we're over or close to max width, recreate the table with truncated original path
     //Dumb magic number I know, but it's there to both add padding to the right side and account for the
     //width of seperators and padding. I could calculate that. I won't.
-    if longest_row_len + 20 > term_width {
-        let over = (longest_row_len + 20) - term_width;
-
-        for item in items {
-            table.add_row(row![
-                item.name,
-                "...".to_string() + &files::path_to_string(&item.original_path())[over..],
-                format_unix_date(item.time_deleted)
-            ]);
-        }
-    } else {
-        for item in items {
-            table.add_row(row![
-                item.name,
-                files::path_to_string(&item.original_path()),
-                format_unix_date(item.time_deleted)
-            ]);
-        }
+    for item in items {
+        table.add_row(row![
+            item.name,
+            truncate_path(&item.original_path(), path_start),
+            format_unix_date(item.time_deleted)
+        ]);
     }
 
     table
+}
+
+fn truncate_path(path: &PathBuf, len: usize) -> String {
+    let str = files::path_to_string(path);
+    if len > 0 {
+        return "…".to_string() + &str[len..];
+    }
+    str
 }
 
 pub fn prompt_recursion(path: String) -> Result<bool, dialoguer::Error> {

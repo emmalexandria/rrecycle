@@ -18,7 +18,7 @@ use trash::{
 };
 
 use crate::{
-    output::{self, print_success},
+    output::{self, get_spinner, print_success},
     Args, OPERATION,
 };
 
@@ -65,8 +65,17 @@ impl OperationError {
     }
 }
 
-pub struct BasicOperations;
+///Operations which don't require multiple functions or implement RecursiveOperation
+pub struct BasicOperations {
+    pb: Option<ProgressBar>,
+}
 impl BasicOperations {
+    pub fn default() -> Self {
+        Self {
+            pb: Some(get_spinner()),
+        }
+    }
+
     pub fn list() -> Result<(), OperationError> {
         match os_limited::list() {
             Ok(l) => match output::print_trash_table(l) {
