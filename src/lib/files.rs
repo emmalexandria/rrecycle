@@ -71,7 +71,6 @@ where
     Ok(count)
 }
 
-/// Function to resolve conflicts when multiple files have the same name
 pub fn select_from_trash(name: &String) -> Option<Vec<TrashItem>> {
     let mut items: Vec<TrashItem> = Vec::new();
 

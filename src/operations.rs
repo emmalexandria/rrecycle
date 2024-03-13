@@ -111,15 +111,24 @@ impl BasicOperations {
         let filtered_path_strings = files::get_existent_paths(&args.files, |s| {
             output::print_error(format!("{} does not exist, skipping...", s));
         });
-
         let paths = files::path_vec_from_string_vec(filtered_path_strings);
-        match trash::delete_all(&paths) {
-            Ok(_) => {
-                output::print_success(format!("Trashed {} files", paths.len()));
-                Ok(())
+        let len = paths.len();
+
+        for path in paths {
+            match trash::delete_all([path]) {
+                Ok(_) => {}
+                Err(e) => {
+                    return Err(OperationError::new(
+                        Box::new(e),
+                        OPERATION::TRASH,
+                        Some(files::path_to_string(path)),
+                    ))
+                }
             }
-            Err(e) => Err(OperationError::new(Box::new(e), OPERATION::TRASH, None)),
         }
+        output::print_success(format!("Trashed {} files", len));
+
+        Ok(())
     }
 }
 
@@ -137,11 +146,12 @@ impl RestoreOperation {
         });
 
         loop {
+            let len_before_attempt = items.len();
             let res = Self::attempt_restore(&mut items);
             match res {
                 Ok(s) => {
                     if s {
-                        print_success(format!("Restored {} files", items.len()));
+                        print_success(format!("Restored {} files", len_before_attempt));
                         return Ok(());
                     }
                 }
