@@ -7,16 +7,19 @@ use std::{
 
 use colored::Colorize;
 use indicatif::ProgressBar;
-use shred::{
+use shred_lib::{
     files::{self, FileErr},
-    output, util, RecursiveOperation,
+    util, RecursiveOperation,
 };
 use trash::{
     os_limited::{self, purge_all},
     TrashItem,
 };
 
-use crate::{Args, OPERATION};
+use crate::{
+    output::{self, format_unix_date, run_conflict_prompt},
+    Args, OPERATION,
+};
 
 #[derive(Debug)]
 pub struct OperationError {
@@ -86,7 +89,7 @@ impl BasicOperations {
         } else {
             for file in &args.files {
                 match files::select_from_trash(file) {
-                    Some(f) => files.push(f),
+                    Some(i) => files.push(run_conflict_prompt(i)),
                     None => pb.println(format!(
                         "{} {}",
                         file.red(),
@@ -202,7 +205,16 @@ impl RestoreOperation {
         let trash_item = files::select_from_trash(file);
         match trash_item {
             Some(i) => {
-                os_limited::restore_all(vec![i])?;
+                let item_names: Vec<String> = i
+                    .iter()
+                    .map(|i| {
+                        i.original_path().to_str().unwrap().to_string()
+                            + " | "
+                            + &format_unix_date(i.time_deleted)
+                    })
+                    .collect();
+
+                os_limited::restore_all([run_conflict_prompt(i)])?;
                 Ok(true)
             }
             None => Ok(false),

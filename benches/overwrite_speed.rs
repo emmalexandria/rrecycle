@@ -5,7 +5,7 @@ use std::{
 };
 
 use rand::distributions::{Alphanumeric, DistString};
-use shred::files::{self, overwrite_file};
+use shred_lib::files::{self, overwrite_file};
 
 use criterion::BenchmarkId;
 use criterion::Criterion;
