@@ -179,7 +179,7 @@ impl RestoreOperation {
                         continue;
                     }
                 }
-                Err(e) => match Self::handle_collision(e, &mut new_files, &path) {
+                Err(e) => match util::handle_collision(e, &mut new_files, &path) {
                     Ok(s) => {
                         output::print_error(format!(
                             "File already exists at path {}, skipping...",
@@ -209,28 +209,6 @@ impl RestoreOperation {
                 Ok(true)
             }
             None => Ok(false),
-        }
-    }
-
-    fn handle_collision(
-        error: trash::Error,
-        files: &mut Vec<String>,
-        path: &String,
-    ) -> Result<String, trash::Error> {
-        //RestoreTwins is also technically an error that we could handle in a similar way, but with how this program works its unecessary
-        //RestoreTwins requires that the user passes in two files that have the same name (referencing them in another way), but because
-        //we do not allow the user to reference two items that could have the same path anyway, it can go unhandled
-        match error {
-            trash::Error::RestoreCollision {
-                path: path_buf,
-                remaining_items: _,
-            } => {
-                //This function modifies a vec reference in place, so theres no need for a return value
-                util::remove_first_string_from_vec(files, path.to_string());
-
-                Ok(files::path_to_string(path_buf))
-            }
-            _ => Err(error),
         }
     }
 }
