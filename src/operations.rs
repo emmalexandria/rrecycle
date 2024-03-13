@@ -205,15 +205,6 @@ impl RestoreOperation {
         let trash_item = files::select_from_trash(file);
         match trash_item {
             Some(i) => {
-                let item_names: Vec<String> = i
-                    .iter()
-                    .map(|i| {
-                        i.original_path().to_str().unwrap().to_string()
-                            + " | "
-                            + &format_unix_date(i.time_deleted)
-                    })
-                    .collect();
-
                 os_limited::restore_all([run_conflict_prompt(i)])?;
                 Ok(true)
             }

@@ -141,8 +141,8 @@ mod tests {
     use std::{fs::OpenOptions, io::Read};
 
     use super::*;
-    /* #[test]
-    fn test_select_from_trash_exists() {
+    #[test]
+    fn test_select_from_trash_exists_single() {
         let filename = generate_random_filename();
 
         File::create(&filename).unwrap();
@@ -151,14 +151,36 @@ mod tests {
         let selected = select_from_trash(&filename);
 
         assert!(selected.is_some());
+        let selected_val = selected.unwrap();
 
-        os_limited::purge_all([selected.unwrap()]).unwrap();
+        assert!(selected_val.len() == 1);
+
+        os_limited::purge_all([&(selected_val[0])]).unwrap();
+    }
+
+    #[test]
+    fn test_select_from_trash_exists_multiple() {
+        let filename = generate_random_filename();
+
+        File::create(&filename).unwrap();
+        trash::delete(&filename).unwrap();
+
+        File::create(&filename).unwrap();
+        trash::delete(&filename).unwrap();
+
+        let selected = select_from_trash(&filename);
+
+        assert!(selected.is_some());
+        let selected_val = selected.unwrap();
+        assert!(selected_val.len() == 2);
+
+        os_limited::purge_all(selected_val).unwrap();
     }
 
     #[test]
     fn test_select_from_trash_fails() {
         assert!(select_from_trash(&generate_random_filename()).is_none());
-    }*/
+    }
 
     fn is_file_of_single_byte(mut file: &File, byte: u8) -> bool {
         let file_len: usize = file.metadata().unwrap().len().try_into().unwrap();
