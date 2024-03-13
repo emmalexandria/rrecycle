@@ -47,8 +47,8 @@ pub fn path_to_string<P: AsRef<Path>>(path: P) -> String {
 pub fn run_op_on_dir_recursive<T>(
     operation: &mut T,
     dir: &Path,
-    mut count: u64,
-) -> Result<u64, FileErr>
+    mut count: usize,
+) -> Result<usize, FileErr>
 where
     T: RecursiveOperation,
 {

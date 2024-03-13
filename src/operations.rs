@@ -9,7 +9,8 @@ use colored::Colorize;
 use indicatif::ProgressBar;
 use shred_lib::{
     files::{self, get_existent_trash_items, FileErr},
-    util, RecursiveOperation,
+    util::{self, pluralise_with_num},
+    RecursiveOperation,
 };
 use trash::{
     os_limited::{self, purge_all},
@@ -17,7 +18,7 @@ use trash::{
 };
 
 use crate::{
-    output::{self, print_success, run_conflict_prompt},
+    output::{self, print_success},
     Args, OPERATION,
 };
 
@@ -90,7 +91,7 @@ impl BasicOperations {
             files = get_existent_trash_items(&args.files, output::run_conflict_prompt, |f| {
                 pb.println(format!(
                     "{} {}",
-                    f,
+                    f.red(),
                     "did not match any file in the recycle bin, skipping...".red()
                 ))
             })
@@ -126,7 +127,11 @@ impl BasicOperations {
                 }
             }
         }
-        output::print_success(format!("Trashed {} files", len));
+        output::print_success(format!(
+            "Trashed {} {}",
+            len,
+            pluralise_with_num("file", len)
+        ));
 
         Ok(())
     }
@@ -151,7 +156,11 @@ impl RestoreOperation {
             match res {
                 Ok(s) => {
                     if s {
-                        print_success(format!("Restored {} files", len_before_attempt));
+                        print_success(format!(
+                            "Restored {} {}",
+                            len_before_attempt,
+                            pluralise_with_num("file", len_before_attempt)
+                        ));
                         return Ok(());
                     }
                 }
@@ -194,7 +203,10 @@ impl DeleteOperation {
     fn operate(&mut self, args: &Args) -> Result<(), OperationError> {
         match recurse_op(self, OPERATION::DELETE, args) {
             Ok(c) => {
-                output::finish_spinner_with_prefix(&self.pb, &format!("Removed {c} files"));
+                output::finish_spinner_with_prefix(
+                    &self.pb,
+                    &format!("Removed {c} {}", pluralise_with_num("file", c)),
+                );
                 Ok(())
             }
             Err(e) => {
@@ -245,7 +257,10 @@ impl ShredOperation {
     fn operate(&mut self, args: &Args, trash_relative: bool) -> Result<(), OperationError> {
         match recurse_op(self, OPERATION::SHRED { trash_relative }, args) {
             Ok(c) => {
-                output::finish_spinner_with_prefix(&self.pb, &format!("Shredded {c} files"));
+                output::finish_spinner_with_prefix(
+                    &self.pb,
+                    &format!("Shredded {c} {}", pluralise_with_num("file", c)),
+                );
                 Ok(())
             }
             Err(e) => {
@@ -288,11 +303,11 @@ impl RecursiveOperation for ShredOperation {
     }
 }
 
-fn recurse_op<T>(op: &mut T, op_type: OPERATION, args: &Args) -> Result<u64, OperationError>
+fn recurse_op<T>(op: &mut T, op_type: OPERATION, args: &Args) -> Result<usize, OperationError>
 where
     T: RecursiveOperation,
 {
-    let mut counter: u64 = 0;
+    let mut counter: usize = 0;
 
     for file in &args.files {
         let path = Path::new(&file);

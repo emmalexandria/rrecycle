@@ -1,3 +1,5 @@
+use std::process::Output;
+
 use trash::TrashItem;
 
 //The following 3 functions are all designed to work together in the same context (being a mutable reference to a vector which should be changed in place)
@@ -66,6 +68,13 @@ pub fn handle_collision_item(
         }
         _ => Err(error),
     }
+}
+
+pub fn pluralise_with_num(str: &str, num: usize) -> String {
+    if num > 1 {
+        return str.to_string() + "s";
+    }
+    return str.to_string();
 }
 
 #[cfg(test)]
