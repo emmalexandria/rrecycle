@@ -112,23 +112,14 @@ impl BasicOperations {
     }
 
     pub fn trash(args: &Args) -> Result<(), OperationError> {
-        let mut files = Vec::<&Path>::new();
-        for path in &args.files {
-            let p = Path::new(path);
-            if p.exists() {
-                files.push(p);
-            } else {
-                output::print_error(format!(
-                    "{} does not exist, skipping...",
-                    files::path_to_string(path)
-                ));
-            }
-        }
+        let filtered_path_strings = files::get_existent_paths(&args.files, &|s| {
+            output::print_error(format!("{} does not exist, skipping...", s));
+        });
 
-        let len = files.len();
-        match trash::delete_all(files) {
+        let paths = files::path_vec_from_string_vec(filtered_path_strings);
+        match trash::delete_all(&paths) {
             Ok(_) => {
-                output::print_success(format!("Trashed {} files", len));
+                output::print_success(format!("Trashed {} files", paths.len()));
                 Ok(())
             }
             Err(e) => Err(OperationError::new(Box::new(e), OPERATION::TRASH, None)),

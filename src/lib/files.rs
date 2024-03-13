@@ -1,5 +1,6 @@
 use std::{
     error::Error,
+    ffi::OsStr,
     fmt::Display,
     fs::{self, File},
     io::{self, BufWriter, Seek, Write},
@@ -128,6 +129,33 @@ pub fn remove_file_or_dir(path: &PathBuf) -> std::io::Result<()> {
         return fs::remove_dir(path);
     }
     fs::remove_file(path)
+}
+
+pub fn get_existent_paths<'a, T, U>(input_paths: &'a T, d_cb: &dyn Fn(U)) -> Vec<U>
+where
+    &'a T: IntoIterator<Item = U>,
+    U: AsRef<Path> + 'a,
+{
+    input_paths
+        .into_iter()
+        .filter_map(|p| {
+            if p.as_ref().exists() {
+                Some(p)
+            } else {
+                d_cb(p);
+                return None;
+            }
+        })
+        .collect()
+}
+
+//Unfortunately I'm yet to find a more functional way to do this
+pub fn path_vec_from_string_vec<'a>(strings: Vec<&'a String>) -> Vec<&'a Path> {
+    let mut ret_vec = Vec::<&Path>::new();
+    for s in strings {
+        ret_vec.push(Path::new(s));
+    }
+    return ret_vec;
 }
 
 #[cfg(test)]
