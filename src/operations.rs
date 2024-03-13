@@ -141,7 +141,7 @@ impl RestoreOperation {
             match res {
                 Ok(s) => {
                     if s {
-                        print_success(format!("Restored {} files", items.len()))
+                        print_success(format!("Restored {} files", items.len()));
                         return Ok(());
                     }
                 }
