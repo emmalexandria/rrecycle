@@ -19,6 +19,14 @@ trash = "4.0.0"
 criterion = "0.5.1"
 rand = "0.8.5"
 
+[[bin]]
+name = "shred"
+path = "src/main.rs"
+
+[lib]
+name = "shred_lib"
+path = "src/lib/lib.rs"
+
 [[bench]]
 name = "overwrite_speed"
 harness = false

@@ -1,6 +1,7 @@
 use argh::FromArgs;
 
 mod operations;
+mod output;
 mod util;
 
 #[derive(Debug, PartialEq)]

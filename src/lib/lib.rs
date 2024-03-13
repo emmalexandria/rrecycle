@@ -4,7 +4,6 @@ use files::FileErr;
 use indicatif::ProgressBar;
 
 pub mod files;
-pub mod output;
 pub mod util;
 
 pub trait RecursiveOperation {
