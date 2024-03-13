@@ -7,16 +7,20 @@ use std::{
 
 use colored::Colorize;
 use indicatif::ProgressBar;
-use shred::{
-    files::{self, FileErr},
-    output, util, RecursiveOperation,
+use shred_lib::{
+    files::{self, get_existent_trash_items, FileErr},
+    util::{self, pluralise_with_num},
+    RecursiveOperation,
 };
 use trash::{
     os_limited::{self, purge_all},
     TrashItem,
 };
 
-use crate::{Args, OPERATION};
+use crate::{
+    output::{self, print_success},
+    Args, OPERATION,
+};
 
 #[derive(Debug)]
 pub struct OperationError {
@@ -73,9 +77,9 @@ impl BasicOperations {
         }
     }
     pub fn purge(args: &Args, all_files: bool) -> Result<(), OperationError> {
-        let mut files: Vec<TrashItem> = Vec::new();
-
+        let files: Vec<TrashItem>;
         let pb = output::get_spinner();
+
         if all_files {
             match os_limited::list() {
                 Ok(l) => files = l,
@@ -84,52 +88,52 @@ impl BasicOperations {
                 }
             }
         } else {
-            for file in &args.files {
-                match files::select_from_trash(file) {
-                    Some(f) => files.push(f),
-                    None => pb.println(format!(
-                        "{} {}",
-                        file.red(),
-                        "did not match any file in the recycle bin".red()
-                    )),
-                }
-            }
+            files = get_existent_trash_items(&args.files, output::run_conflict_prompt, |f| {
+                pb.println(format!(
+                    "{} {}",
+                    f.red(),
+                    "did not match any file in the recycle bin, skipping...".red()
+                ))
+            })
         }
 
-        let len = files.len();
-        for file in files {
+        for file in &files {
             pb.set_prefix("Purging");
             pb.set_message(file.name.clone());
             purge_all(vec![file]).unwrap();
         }
 
-        output::finish_spinner_with_prefix(&pb, &format!("Purged {} files", len));
+        output::finish_spinner_with_prefix(&pb, &format!("Purged {} files", files.len()));
 
         Ok(())
     }
 
     pub fn trash(args: &Args) -> Result<(), OperationError> {
-        let mut files = Vec::<&Path>::new();
-        for path in &args.files {
-            let p = Path::new(path);
-            if p.exists() {
-                files.push(p);
-            } else {
-                output::print_error(format!(
-                    "{} does not exist, skipping...",
-                    files::path_to_string(path)
-                ));
-            }
-        }
+        let filtered_path_strings = files::get_existent_paths(&args.files, |s| {
+            output::print_error(format!("{} does not exist, skipping...", s));
+        });
+        let paths = files::path_vec_from_string_vec(filtered_path_strings);
+        let len = paths.len();
 
-        let len = files.len();
-        match trash::delete_all(files) {
-            Ok(_) => {
-                output::print_success(format!("Trashed {} files", len));
-                Ok(())
+        for path in paths {
+            match trash::delete_all([path]) {
+                Ok(_) => {}
+                Err(e) => {
+                    return Err(OperationError::new(
+                        Box::new(e),
+                        OPERATION::TRASH,
+                        Some(files::path_to_string(path)),
+                    ))
+                }
             }
-            Err(e) => Err(OperationError::new(Box::new(e), OPERATION::TRASH, None)),
         }
+        output::print_success(format!(
+            "Trashed {} {}",
+            len,
+            pluralise_with_num("file", len)
+        ));
+
+        Ok(())
     }
 }
 
@@ -138,97 +142,51 @@ pub struct RestoreOperation;
 //This was more complicated to implement than I expected, so there'll be a lot of comments
 impl RestoreOperation {
     fn operate(args: &Args) -> Result<(), OperationError> {
-        //stores the current list of files that will have attempt_restore() called on them on each loop iteration
-        let mut files = args.files.clone();
+        let mut items = get_existent_trash_items(&args.files, output::run_conflict_prompt, |f| {
+            output::print_error(format!(
+                "{} {}",
+                f,
+                "did not match any file in the recycle bin, skipping...".red()
+            ))
+        });
 
         loop {
-            //must store the length of files in the restore attempt up here before files is moved into attempt_restore (for use in potential success message)
-            let curr_file_len = files.len();
-            let res_result = Self::attempt_restore(files);
-            match res_result {
-                Ok(new_files) => {
-                    //If there are new files, set the local file variable and run the loop again
-                    if new_files.is_some() {
-                        files = new_files.unwrap();
-                        continue;
-                    } else {
-                        //If there are no new files, the loop can print a success message and the function can return
-                        output::print_success(format!("Restored {} files", curr_file_len));
+            let len_before_attempt = items.len();
+            let res = Self::attempt_restore(&mut items);
+            match res {
+                Ok(s) => {
+                    if s {
+                        print_success(format!(
+                            "Restored {} {}",
+                            len_before_attempt,
+                            pluralise_with_num("file", len_before_attempt)
+                        ));
                         return Ok(());
                     }
                 }
-                Err(e) => return Err(e),
+                Err(e) => {
+                    return Err(e);
+                }
             }
         }
     }
 
     ///Attemps to restore the file. Handles any errors that might occur (or paths that don't actually exist in the trash)
     /// Returns a Ok(Some()) modified copy of the input files if changes had to be made, otherwise it returns Ok(None)
-    fn attempt_restore(files: Vec<String>) -> Result<Option<Vec<String>>, OperationError> {
-        let mut new_files = files.clone();
-        for path in files {
-            match Self::restore_single(&path) {
-                Ok(exists) => {
-                    //If the file does not exist, print an error and remove it from the files but do not actually error
-                    if !exists {
-                        output::print_error(format!("{path} does not exist in trash, skipping..."));
-                        util::remove_string_from_vec(&mut new_files, path);
-                        continue;
-                    }
+    fn attempt_restore(mut files: &mut Vec<TrashItem>) -> Result<bool, OperationError> {
+        for file in files.clone() {
+            match trash::os_limited::restore_all([file.clone()]) {
+                Ok(_) => util::remove_from_vec(&mut files, &file),
+                Err(e) => {
+                    util::handle_collision_item(e, &mut files, &file).map_err(|err| {
+                        OperationError::new(Box::new(err), OPERATION::RESTORE, None)
+                    })?;
+                    return Ok(false);
                 }
-                Err(e) => match Self::handle_collision(e, &mut new_files, &path) {
-                    Ok(s) => {
-                        output::print_error(format!(
-                            "File already exists at path {}, skipping...",
-                            s
-                        ));
-                    }
-                    Err(inner_e) => {
-                        return Err(OperationError::new(
-                            Box::new(inner_e),
-                            OPERATION::RESTORE,
-                            Some(path),
-                        ))
-                    }
-                },
             }
         }
 
-        Ok(None)
-    }
-
-    ///Attempt to restore a single file, returning Ok(true) if the file existed in the trash, and Ok(false) if the file did not.
-    fn restore_single(file: &String) -> Result<bool, trash::Error> {
-        let trash_item = files::select_from_trash(file);
-        match trash_item {
-            Some(i) => {
-                os_limited::restore_all(vec![i])?;
-                Ok(true)
-            }
-            None => Ok(false),
-        }
-    }
-
-    fn handle_collision(
-        error: trash::Error,
-        files: &mut Vec<String>,
-        path: &String,
-    ) -> Result<String, trash::Error> {
-        //RestoreTwins is also technically an error that we could handle in a similar way, but with how this program works its unecessary
-        //RestoreTwins requires that the user passes in two files that have the same name (referencing them in another way), but because
-        //we do not allow the user to reference two items that could have the same path anyway, it can go unhandled
-        match error {
-            trash::Error::RestoreCollision {
-                path: path_buf,
-                remaining_items: _,
-            } => {
-                //This function modifies a vec reference in place, so theres no need for a return value
-                util::remove_first_string_from_vec(files, path.to_string());
-
-                Ok(files::path_to_string(path_buf))
-            }
-            _ => Err(error),
-        }
+        Ok(true)
     }
 }
 
@@ -245,7 +203,10 @@ impl DeleteOperation {
     fn operate(&mut self, args: &Args) -> Result<(), OperationError> {
         match recurse_op(self, OPERATION::DELETE, args) {
             Ok(c) => {
-                output::finish_spinner_with_prefix(&self.pb, &format!("Removed {c} files"));
+                output::finish_spinner_with_prefix(
+                    &self.pb,
+                    &format!("Removed {c} {}", pluralise_with_num("file", c)),
+                );
                 Ok(())
             }
             Err(e) => {
@@ -296,7 +257,10 @@ impl ShredOperation {
     fn operate(&mut self, args: &Args, trash_relative: bool) -> Result<(), OperationError> {
         match recurse_op(self, OPERATION::SHRED { trash_relative }, args) {
             Ok(c) => {
-                output::finish_spinner_with_prefix(&self.pb, &format!("Shredded {c} files"));
+                output::finish_spinner_with_prefix(
+                    &self.pb,
+                    &format!("Shredded {c} {}", pluralise_with_num("file", c)),
+                );
                 Ok(())
             }
             Err(e) => {
@@ -339,11 +303,11 @@ impl RecursiveOperation for ShredOperation {
     }
 }
 
-fn recurse_op<T>(op: &mut T, op_type: OPERATION, args: &Args) -> Result<u64, OperationError>
+fn recurse_op<T>(op: &mut T, op_type: OPERATION, args: &Args) -> Result<usize, OperationError>
 where
     T: RecursiveOperation,
 {
-    let mut counter: u64 = 0;
+    let mut counter: usize = 0;
 
     for file in &args.files {
         let path = Path::new(&file);

@@ -12,7 +12,7 @@ use prettytable::{
 };
 use trash::TrashItem;
 
-use crate::files;
+use shred_lib::files;
 
 pub fn format_unix_date(time: i64) -> String {
     chrono::Local
@@ -107,6 +107,28 @@ pub fn prompt_recursion(path: String) -> Result<bool, dialoguer::Error> {
         .interact()
 }
 
+pub fn run_conflict_prompt(items: Vec<TrashItem>) -> TrashItem {
+    if items.len() == 1 {
+        return items[0].clone();
+    }
+
+    let item_names: Vec<String> = items
+        .iter()
+        .map(|i| {
+            i.original_path().to_str().unwrap().to_string()
+                + " | "
+                + &format_unix_date(i.time_deleted)
+        })
+        .collect();
+
+    let selection = file_conflict_prompt(
+        "Please select which file to operate on.".to_string(),
+        item_names,
+    );
+
+    return items[selection].clone();
+}
+
 pub fn file_conflict_prompt(prompt: String, items: Vec<String>) -> usize {
     return Select::with_theme(&ColorfulTheme::default())
         .with_prompt(prompt)
@@ -117,7 +139,7 @@ pub fn file_conflict_prompt(prompt: String, items: Vec<String>) -> usize {
 
 pub fn get_spinner() -> ProgressBar {
     let style = ProgressStyle::default_spinner()
-        .tick_chars("✶✸✹✺✹✷✓")
+        .tick_chars("✶✸✹✺✹✷✔")
         .template("{spinner:.cyan} {prefix:.bold} {wide_msg} [{elapsed_precise}]")
         .unwrap();
 
@@ -138,7 +160,7 @@ pub fn finish_spinner_with_prefix(pb: &ProgressBar, message: &str) {
 }
 
 pub fn print_success(message: String) {
-    println!("{} {}", "✓".cyan(), message.bold())
+    println!("{} {}", "✔".cyan(), message.bold())
 }
 
 pub fn print_error(output: String) {

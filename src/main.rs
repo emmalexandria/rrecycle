@@ -1,7 +1,7 @@
 use argh::FromArgs;
 
 mod operations;
-mod util;
+mod output;
 
 #[derive(Debug, PartialEq)]
 enum OPERATION {

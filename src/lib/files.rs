@@ -1,5 +1,6 @@
 use std::{
     error::Error,
+    ffi::OsStr,
     fmt::Display,
     fs::{self, File},
     io::{self, BufWriter, Seek, Write},
@@ -7,10 +8,7 @@ use std::{
 };
 use trash::{os_limited, TrashItem};
 
-use crate::{
-    output::{self, format_unix_date},
-    RecursiveOperation,
-};
+use crate::RecursiveOperation;
 
 #[derive(Debug)]
 pub struct FileErr {
@@ -49,8 +47,8 @@ pub fn path_to_string<P: AsRef<Path>>(path: P) -> String {
 pub fn run_op_on_dir_recursive<T>(
     operation: &mut T,
     dir: &Path,
-    mut count: u64,
-) -> Result<u64, FileErr>
+    mut count: usize,
+) -> Result<usize, FileErr>
 where
     T: RecursiveOperation,
 {
@@ -73,8 +71,7 @@ where
     Ok(count)
 }
 
-/// Function to resolve conflicts when multiple files have the same name
-pub fn select_from_trash(name: &String) -> Option<TrashItem> {
+pub fn select_from_trash(name: &String) -> Option<Vec<TrashItem>> {
     let mut items: Vec<TrashItem> = Vec::new();
 
     for item in os_limited::list().unwrap() {
@@ -83,29 +80,24 @@ pub fn select_from_trash(name: &String) -> Option<TrashItem> {
         }
     }
 
-    if items.len() > 1 {
-        let item_names: Vec<String> = items
-            .iter()
-            .map(|i| {
-                i.original_path().to_str().unwrap().to_string()
-                    + " | "
-                    + &format_unix_date(i.time_deleted)
-            })
-            .collect();
-
-        let selection = output::file_conflict_prompt(
-            "Please select which file to operate on.".to_string(),
-            item_names,
-        );
-
-        return Some(items[selection].clone());
+    if items.is_empty() {
+        return None;
     }
+    Some(items)
+}
 
-    if items.len() == 1 {
-        return Some(items[0].clone());
-    }
-
-    None
+pub fn get_existent_trash_items(
+    names: &Vec<String>,
+    s_cb: impl Fn(Vec<TrashItem>) -> TrashItem,
+    d_cb: impl Fn(String),
+) -> Vec<TrashItem> {
+    names
+        .iter()
+        .filter_map(|n| match select_from_trash(n) {
+            Some(i) => Some(s_cb(i)),
+            None => None,
+        })
+        .collect()
 }
 
 pub fn overwrite_file(mut file: &File, runs: usize) -> std::io::Result<()> {
@@ -121,6 +113,9 @@ pub fn overwrite_file(mut file: &File, runs: usize) -> std::io::Result<()> {
 
     for _ in 0..runs {
         writer.seek(io::SeekFrom::Start(0))?;
+
+        //Keep track of our position in the file ourselves based on the delusion that it might impact
+        //performace to seek on each loop iteration
         let mut offset: usize = 0;
         loop {
             if (file_len - offset) >= OW_BUFF_SIZE {
@@ -138,14 +133,6 @@ pub fn overwrite_file(mut file: &File, runs: usize) -> std::io::Result<()> {
     Ok(())
 }
 
-fn calc_remaining_len_in_reader(file: &mut BufWriter<&File>) -> std::io::Result<u64> {
-    let current = file.stream_position()?;
-    let end = file.seek(io::SeekFrom::End(0))?;
-    file.seek(io::SeekFrom::Start(current))?;
-
-    Ok(end - current)
-}
-
 pub fn remove_file_or_dir(path: &PathBuf) -> std::io::Result<()> {
     if !path.exists() {
         return Err(std::io::ErrorKind::NotFound.into());
@@ -157,6 +144,33 @@ pub fn remove_file_or_dir(path: &PathBuf) -> std::io::Result<()> {
     fs::remove_file(path)
 }
 
+pub fn get_existent_paths<'a, T, U>(input_paths: &'a T, d_cb: impl Fn(U)) -> Vec<U>
+where
+    &'a T: IntoIterator<Item = U>,
+    U: AsRef<Path> + 'a,
+{
+    input_paths
+        .into_iter()
+        .filter_map(|p| {
+            if p.as_ref().exists() {
+                Some(p)
+            } else {
+                d_cb(p);
+                return None;
+            }
+        })
+        .collect()
+}
+
+//Unfortunately I'm yet to find a more functional way to do this
+pub fn path_vec_from_string_vec<'a>(strings: Vec<&'a String>) -> Vec<&'a Path> {
+    let mut ret_vec = Vec::<&Path>::new();
+    for s in strings {
+        ret_vec.push(Path::new(s));
+    }
+    return ret_vec;
+}
+
 #[cfg(test)]
 mod tests {
     use rand::distributions::{Alphanumeric, DistString};
@@ -164,7 +178,7 @@ mod tests {
 
     use super::*;
     #[test]
-    fn test_select_from_trash_exists() {
+    fn test_select_from_trash_exists_single() {
         let filename = generate_random_filename();
 
         File::create(&filename).unwrap();
@@ -173,8 +187,30 @@ mod tests {
         let selected = select_from_trash(&filename);
 
         assert!(selected.is_some());
+        let selected_val = selected.unwrap();
 
-        os_limited::purge_all([selected.unwrap()]).unwrap();
+        assert!(selected_val.len() == 1);
+
+        os_limited::purge_all([&(selected_val[0])]).unwrap();
+    }
+
+    #[test]
+    fn test_select_from_trash_exists_multiple() {
+        let filename = generate_random_filename();
+
+        File::create(&filename).unwrap();
+        trash::delete(&filename).unwrap();
+
+        File::create(&filename).unwrap();
+        trash::delete(&filename).unwrap();
+
+        let selected = select_from_trash(&filename);
+
+        assert!(selected.is_some());
+        let selected_val = selected.unwrap();
+        assert!(selected_val.len() == 2);
+
+        os_limited::purge_all(selected_val).unwrap();
     }
 
     #[test]
