@@ -5,9 +5,11 @@ use std::{
 };
 
 use rand::distributions::{Alphanumeric, DistString};
-use shred::files;
+use shred::files::{self, overwrite_file};
 
-use brunch::Bench;
+use criterion::BenchmarkId;
+use criterion::Criterion;
+use criterion::{criterion_group, criterion_main};
 
 fn generate_random_filename() -> String {
     Alphanumeric.sample_string(&mut rand::thread_rng(), 8)
@@ -30,17 +32,24 @@ fn gen_file(size: usize, name: &str) -> File {
     return file;
 }
 
-brunch::benches!(Bench::new("overwrite_speed")
-    .with_timeout(Duration::from_secs(300))
-    .with_samples(100)
-    .run(|| {
+fn bench_overwrite(c: &mut Criterion) {
+    let MB = 10usize.pow(6);
+    let mut group = c.benchmark_group("overwrite-file");
+    group.sample_size(10);
+    group.measurement_time(Duration::from_secs(150));
+    group.warm_up_time(Duration::from_secs(10));
+
+    for size in [10 * MB, 100 * MB, 500 * MB, 1000 * MB] {
         let filename = generate_random_filename();
-        //100MB
-        let file_size: usize = 10usize.pow(8);
+        let file = gen_file(size, &filename);
+        group.bench_with_input(
+            BenchmarkId::from_parameter((size / MB).to_string()),
+            &file,
+            |b, f| b.iter(|| overwrite_file(&f, 1)),
+        );
+        std::fs::remove_file(filename).unwrap();
+    }
+}
 
-        let mut file = gen_file(file_size, &filename);
-
-        files::overwrite_file(&mut file, 1).unwrap();
-
-        fs::remove_file(&filename).unwrap();
-    }));
+criterion_group!(benches, bench_overwrite);
+criterion_main!(benches);

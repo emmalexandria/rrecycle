@@ -109,31 +109,31 @@ pub fn select_from_trash(name: &String) -> Option<TrashItem> {
 }
 
 pub fn overwrite_file(mut file: &File, runs: usize) -> std::io::Result<()> {
-    const SHRED_BUFFER_SIZE: usize = 4096;
+    const OW_BUFF_SIZE: usize = 4096;
     if file.metadata()?.is_dir() {
         return Ok(());
     }
 
+    let file_len: usize = file.metadata()?.len().try_into().unwrap();
     let mut writer = BufWriter::new(file);
 
-    let buf: [u8; SHRED_BUFFER_SIZE] = [0u8; SHRED_BUFFER_SIZE];
+    let buf: [u8; OW_BUFF_SIZE] = [0u8; OW_BUFF_SIZE];
 
     for _ in 0..runs {
         writer.seek(io::SeekFrom::Start(0))?;
+        let mut offset: usize = 0;
         loop {
-            let remaining_len: usize = calc_remaining_len_in_reader(&mut writer)?
-                .try_into()
-                .unwrap();
-            if remaining_len >= SHRED_BUFFER_SIZE {
-                writer.write_all(&buf)?;
+            if (file_len - offset) >= OW_BUFF_SIZE {
+                //no need to retry if this write doesn't write the entire buffer. the data in the buffer isn't important
+                offset += writer.write(&buf)?;
             } else {
-                writer.write_all(&vec![0u8; remaining_len])?;
+                writer.write(&vec![0u8; file_len - offset])?;
                 break;
             }
         }
-
-        writer.flush()?;
     }
+
+    writer.flush()?;
 
     Ok(())
 }
