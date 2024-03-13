@@ -99,6 +99,9 @@ pub fn overwrite_file(mut file: &File, runs: usize) -> std::io::Result<()> {
 
     for _ in 0..runs {
         writer.seek(io::SeekFrom::Start(0))?;
+
+        //Keep track of our position in the file ourselves based on the delusion that it might impact
+        //performace to seek on each loop iteration
         let mut offset: usize = 0;
         loop {
             if (file_len - offset) >= OW_BUFF_SIZE {
@@ -114,14 +117,6 @@ pub fn overwrite_file(mut file: &File, runs: usize) -> std::io::Result<()> {
     writer.flush()?;
 
     Ok(())
-}
-
-fn calc_remaining_len_in_reader(file: &mut BufWriter<&File>) -> std::io::Result<u64> {
-    let current = file.stream_position()?;
-    let end = file.seek(io::SeekFrom::End(0))?;
-    file.seek(io::SeekFrom::Start(current))?;
-
-    Ok(end - current)
 }
 
 pub fn remove_file_or_dir(path: &PathBuf) -> std::io::Result<()> {

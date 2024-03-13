@@ -17,7 +17,7 @@ use trash::{
 };
 
 use crate::{
-    output::{self, format_unix_date, run_conflict_prompt},
+    output::{self, run_conflict_prompt},
     Args, OPERATION,
 };
 
