@@ -8,7 +8,7 @@ use std::{
 use colored::Colorize;
 use indicatif::ProgressBar;
 use shred_lib::{
-    files::{self, FileErr},
+    files::{self, get_existent_trash_items, FileErr},
     util, RecursiveOperation,
 };
 use trash::{
@@ -17,7 +17,7 @@ use trash::{
 };
 
 use crate::{
-    output::{self, run_conflict_prompt},
+    output::{self, print_success, run_conflict_prompt},
     Args, OPERATION,
 };
 
@@ -76,9 +76,9 @@ impl BasicOperations {
         }
     }
     pub fn purge(args: &Args, all_files: bool) -> Result<(), OperationError> {
-        let mut files: Vec<TrashItem> = Vec::new();
-
+        let files: Vec<TrashItem>;
         let pb = output::get_spinner();
+
         if all_files {
             match os_limited::list() {
                 Ok(l) => files = l,
@@ -87,32 +87,28 @@ impl BasicOperations {
                 }
             }
         } else {
-            for file in &args.files {
-                match files::select_from_trash(file) {
-                    Some(i) => files.push(run_conflict_prompt(i)),
-                    None => pb.println(format!(
-                        "{} {}",
-                        file.red(),
-                        "did not match any file in the recycle bin".red()
-                    )),
-                }
-            }
+            files = get_existent_trash_items(&args.files, output::run_conflict_prompt, |f| {
+                pb.println(format!(
+                    "{} {}",
+                    f,
+                    "did not match any file in the recycle bin, skipping...".red()
+                ))
+            })
         }
 
-        let len = files.len();
-        for file in files {
+        for file in &files {
             pb.set_prefix("Purging");
             pb.set_message(file.name.clone());
             purge_all(vec![file]).unwrap();
         }
 
-        output::finish_spinner_with_prefix(&pb, &format!("Purged {} files", len));
+        output::finish_spinner_with_prefix(&pb, &format!("Purged {} files", files.len()));
 
         Ok(())
     }
 
     pub fn trash(args: &Args) -> Result<(), OperationError> {
-        let filtered_path_strings = files::get_existent_paths(&args.files, &|s| {
+        let filtered_path_strings = files::get_existent_paths(&args.files, |s| {
             output::print_error(format!("{} does not exist, skipping...", s));
         });
 
@@ -132,75 +128,46 @@ pub struct RestoreOperation;
 //This was more complicated to implement than I expected, so there'll be a lot of comments
 impl RestoreOperation {
     fn operate(args: &Args) -> Result<(), OperationError> {
-        //stores the current list of files that will have attempt_restore() called on them on each loop iteration
-        let mut files = args.files.clone();
+        let mut items = get_existent_trash_items(&args.files, output::run_conflict_prompt, |f| {
+            output::print_error(format!(
+                "{} {}",
+                f,
+                "did not match any file in the recycle bin, skipping...".red()
+            ))
+        });
 
         loop {
-            //must store the length of files in the restore attempt up here before files is moved into attempt_restore (for use in potential success message)
-            let curr_file_len = files.len();
-            let res_result = Self::attempt_restore(files);
-            match res_result {
-                Ok(new_files) => {
-                    //If there are new files, set the local file variable and run the loop again
-                    if new_files.is_some() {
-                        files = new_files.unwrap();
-                        continue;
-                    } else {
-                        //If there are no new files, the loop can print a success message and the function can return
-                        output::print_success(format!("Restored {} files", curr_file_len));
+            let res = Self::attempt_restore(&mut items);
+            match res {
+                Ok(s) => {
+                    if s {
+                        print_success(format!("Restored {} files", items.len()))
                         return Ok(());
                     }
                 }
-                Err(e) => return Err(e),
+                Err(e) => {
+                    return Err(e);
+                }
             }
         }
     }
 
     ///Attemps to restore the file. Handles any errors that might occur (or paths that don't actually exist in the trash)
     /// Returns a Ok(Some()) modified copy of the input files if changes had to be made, otherwise it returns Ok(None)
-    fn attempt_restore(files: Vec<String>) -> Result<Option<Vec<String>>, OperationError> {
-        let mut new_files = files.clone();
-        for path in files {
-            match Self::restore_single(&path) {
-                Ok(exists) => {
-                    //If the file does not exist, print an error and remove it from the files but do not actually error
-                    if !exists {
-                        output::print_error(format!("{path} does not exist in trash, skipping..."));
-                        util::remove_string_from_vec(&mut new_files, path);
-                        continue;
-                    }
+    fn attempt_restore(mut files: &mut Vec<TrashItem>) -> Result<bool, OperationError> {
+        for file in files.clone() {
+            match trash::os_limited::restore_all([file.clone()]) {
+                Ok(_) => util::remove_from_vec(&mut files, &file),
+                Err(e) => {
+                    util::handle_collision_item(e, &mut files, &file).map_err(|err| {
+                        OperationError::new(Box::new(err), OPERATION::RESTORE, None)
+                    })?;
+                    return Ok(false);
                 }
-                Err(e) => match util::handle_collision(e, &mut new_files, &path) {
-                    Ok(s) => {
-                        output::print_error(format!(
-                            "File already exists at path {}, skipping...",
-                            s
-                        ));
-                    }
-                    Err(inner_e) => {
-                        return Err(OperationError::new(
-                            Box::new(inner_e),
-                            OPERATION::RESTORE,
-                            Some(path),
-                        ))
-                    }
-                },
             }
         }
 
-        Ok(None)
-    }
-
-    ///Attempt to restore a single file, returning Ok(true) if the file existed in the trash, and Ok(false) if the file did not.
-    fn restore_single(file: &String) -> Result<bool, trash::Error> {
-        let trash_item = files::select_from_trash(file);
-        match trash_item {
-            Some(i) => {
-                os_limited::restore_all([run_conflict_prompt(i)])?;
-                Ok(true)
-            }
-            None => Ok(false),
-        }
+        Ok(true)
     }
 }
 

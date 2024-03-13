@@ -87,6 +87,20 @@ pub fn select_from_trash(name: &String) -> Option<Vec<TrashItem>> {
     Some(items)
 }
 
+pub fn get_existent_trash_items(
+    names: &Vec<String>,
+    s_cb: impl Fn(Vec<TrashItem>) -> TrashItem,
+    d_cb: impl Fn(String),
+) -> Vec<TrashItem> {
+    names
+        .iter()
+        .filter_map(|n| match select_from_trash(n) {
+            Some(i) => Some(s_cb(i)),
+            None => None,
+        })
+        .collect()
+}
+
 pub fn overwrite_file(mut file: &File, runs: usize) -> std::io::Result<()> {
     const OW_BUFF_SIZE: usize = 4096;
     if file.metadata()?.is_dir() {
@@ -131,7 +145,7 @@ pub fn remove_file_or_dir(path: &PathBuf) -> std::io::Result<()> {
     fs::remove_file(path)
 }
 
-pub fn get_existent_paths<'a, T, U>(input_paths: &'a T, d_cb: &dyn Fn(U)) -> Vec<U>
+pub fn get_existent_paths<'a, T, U>(input_paths: &'a T, d_cb: impl Fn(U)) -> Vec<U>
 where
     &'a T: IntoIterator<Item = U>,
     U: AsRef<Path> + 'a,
