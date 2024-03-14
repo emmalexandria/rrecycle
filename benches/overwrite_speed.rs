@@ -36,11 +36,11 @@ fn bench_overwrite(c: &mut Criterion) {
     let MB = 10usize.pow(6);
     let mut group = c.benchmark_group("overwrite-file");
     group.sample_size(10);
-    group.measurement_time(Duration::from_secs(150));
-    group.warm_up_time(Duration::from_secs(10));
+    group.sampling_mode(criterion::SamplingMode::Flat);
+    group.warm_up_time(Duration::from_secs(3));
 
-    for size in [10 * MB, 100 * MB, 500 * MB, 1000 * MB] {
-        let filename = generate_random_filename();
+    for size in [10 * MB, 100 * MB, 500 * MB, 750 * MB, 1000 * MB] {
+        let filename = "testfiles/".to_string() + &generate_random_filename();
         let file = gen_file(size, &filename);
         group.bench_with_input(
             BenchmarkId::from_parameter((size / MB).to_string()),

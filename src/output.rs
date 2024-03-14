@@ -140,7 +140,7 @@ pub fn file_conflict_prompt(prompt: String, items: Vec<String>) -> usize {
 pub fn get_spinner() -> ProgressBar {
     let style = ProgressStyle::default_spinner()
         .tick_chars("✶✸✹✺✹✷✔")
-        .template("{spinner:.cyan} {prefix:.bold} {wide_msg} [{elapsed_precise}]")
+        .template("{spinner:.green} {prefix:.bold} {wide_msg} [{elapsed_precise}]")
         .unwrap();
 
     let pb = ProgressBar::new_spinner()
@@ -160,7 +160,7 @@ pub fn finish_spinner_with_prefix(pb: &ProgressBar, message: &str) {
 }
 
 pub fn print_success(message: String) {
-    println!("{} {}", "✔".cyan(), message.bold())
+    println!("{} {}", "✔".green(), message.bold())
 }
 
 pub fn print_error(output: String) {

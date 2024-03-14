@@ -5,6 +5,7 @@ use std::{
     fs::{self, File},
     io::{self, BufWriter, Seek, Write},
     path::{Path, PathBuf},
+    thread,
 };
 use trash::{os_limited, TrashItem};
 
@@ -101,34 +102,41 @@ pub fn get_existent_trash_items(
 }
 
 pub fn overwrite_file(mut file: &File, runs: usize) -> std::io::Result<()> {
-    const OW_BUFF_SIZE: usize = 4096;
+    const OW_BUFF_SIZE: usize = 1024usize.pow(2);
+    let file_len = file.metadata()?.len();
+
     if file.metadata()?.is_dir() {
         return Ok(());
     }
 
-    let file_len: usize = file.metadata()?.len().try_into().unwrap();
+    if file_len < OW_BUFF_SIZE.try_into().unwrap() {
+        file.seek(io::SeekFrom::Start(0))?;
+        file.write(&vec![0u8; file_len.try_into().unwrap()])?;
+        return Ok(());
+    }
+
     let mut writer = BufWriter::new(file);
 
-    let buf: [u8; OW_BUFF_SIZE] = [0u8; OW_BUFF_SIZE];
+    let buf = vec![0u8; OW_BUFF_SIZE];
 
     for _ in 0..runs {
         writer.seek(io::SeekFrom::Start(0))?;
 
         //Keep track of our position in the file ourselves based on the delusion that it might impact
         //performace to seek on each loop iteration
-        let mut offset: usize = 0;
+        let bytes_to_end = (file_len - writer.seek(io::SeekFrom::Current(0))?)
+            .try_into()
+            .unwrap();
         loop {
-            if (file_len - offset) >= OW_BUFF_SIZE {
+            if bytes_to_end >= OW_BUFF_SIZE {
                 //no need to retry if this write doesn't write the entire buffer. the data in the buffer isn't important
-                offset += writer.write(&buf)?;
+                writer.write(&buf)?;
             } else {
-                writer.write(&vec![0u8; file_len - offset])?;
+                writer.write(&vec![0u8; bytes_to_end])?;
                 break;
             }
         }
     }
-
-    writer.flush()?;
 
     Ok(())
 }
@@ -243,8 +251,8 @@ mod tests {
             .open(&filename)
             .unwrap();
 
-        //write 512MB of data to the test file (MB not MiB)
-        let ones = vec![1u8; 128 * (10 ^ 6)];
+        //write 1MiB of data to the test file
+        let ones = vec![1u8; 1024 ^ 2];
         file.write_all(&ones).unwrap();
         file.flush().unwrap();
 
@@ -268,7 +276,7 @@ mod tests {
             .open(&filename)
             .unwrap();
 
-        //write 512MB of data to the test file (MB not MiB)
+        //write 1MB of data to the test file (MB not MiB)
         let ones = vec![1u8; 10usize.pow(6)];
         file.write_all(&ones).unwrap();
         file.flush().unwrap();
