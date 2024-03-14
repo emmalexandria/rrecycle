@@ -198,6 +198,8 @@ impl RestoreOperation {
     }
 }
 
+//This operation could technically be performed without the whole recursion shtick, but for reasons of output niceness it'll recurse. Deleting files is so
+//fast that I doubt the performance hit will matter
 pub struct DeleteOperation {
     pb: OpSpinner,
 }
