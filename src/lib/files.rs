@@ -1,43 +1,15 @@
 use std::{
-    error::Error,
-    ffi::OsStr,
-    fmt::Display,
     fs::{self, File},
     io::{self, BufWriter, Seek, Write},
     path::{Path, PathBuf},
-    thread,
 };
 use trash::{os_limited, TrashItem};
 
-use crate::RecursiveOperation;
-
-#[derive(Debug)]
-pub struct FileErr {
-    pub error: std::io::Error,
-    pub file: String,
-}
-
-impl Display for FileErr {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.error)
-    }
-}
-
-impl FileErr {
-    pub fn map<P: AsRef<Path>>(error: std::io::Error, path: P) -> FileErr {
-        FileErr {
-            error,
-            file: path_to_string(path),
-        }
-    }
-}
-
-impl Error for FileErr {}
+use crate::{FileErr, RecursiveOperation};
 
 ///Returns a losslessly converted string if possible, but if that errors return the lossy conversion.
-//This is done because this function is used pretty much everywhere. Currently has 12 uses and counting.
-//While it may cause issues in some edge case, I'd rather avoid matching or unwrapping Options everywhere
-//and what am I gonna do if the path contains non valid unicode anyway? Die?
+//This function is used pretty much everywhere. While it may cause issues in some edge case,
+// I'd rather avoid matching or unwrapping Options everywhere
 pub fn path_to_string<P: AsRef<Path>>(path: P) -> String {
     match path.as_ref().to_str() {
         Some(s) => s.to_string(),
@@ -101,17 +73,11 @@ pub fn get_existent_trash_items(
         .collect()
 }
 
-pub fn overwrite_file(mut file: &File, runs: usize) -> std::io::Result<()> {
-    const OW_BUFF_SIZE: usize = 1024usize.pow(2);
+pub fn overwrite_file(file: &File, runs: usize) -> std::io::Result<()> {
+    const OW_BUFF_SIZE: usize = 10usize.pow(6);
     let file_len = file.metadata()?.len();
 
     if file.metadata()?.is_dir() {
-        return Ok(());
-    }
-
-    if file_len < OW_BUFF_SIZE.try_into().unwrap() {
-        file.seek(io::SeekFrom::Start(0))?;
-        file.write(&vec![0u8; file_len.try_into().unwrap()])?;
         return Ok(());
     }
 
@@ -124,15 +90,12 @@ pub fn overwrite_file(mut file: &File, runs: usize) -> std::io::Result<()> {
 
         //Keep track of our position in the file ourselves based on the delusion that it might impact
         //performace to seek on each loop iteration
-        let bytes_to_end = (file_len - writer.seek(io::SeekFrom::Current(0))?)
-            .try_into()
-            .unwrap();
         loop {
-            if bytes_to_end >= OW_BUFF_SIZE {
-                //no need to retry if this write doesn't write the entire buffer. the data in the buffer isn't important
-                writer.write(&buf)?;
+            let offset = writer.seek(io::SeekFrom::Current(0)).unwrap();
+            if (file_len - offset) >= OW_BUFF_SIZE.try_into().unwrap() {
+                writer.write_all(&buf)?;
             } else {
-                writer.write(&vec![0u8; bytes_to_end])?;
+                writer.write_all(&vec![0u8; (file_len - offset).try_into().unwrap()])?;
                 break;
             }
         }

@@ -1,5 +1,3 @@
-use std::process::Output;
-
 use trash::TrashItem;
 
 //The following 3 functions are all designed to work together in the same context (being a mutable reference to a vector which should be changed in place)
@@ -56,7 +54,7 @@ pub fn handle_collision_item(
 ) -> Result<(), trash::Error> {
     match error {
         trash::Error::RestoreCollision {
-            path: path_buf,
+            path: _,
             remaining_items: _,
         } => {
             //This is a little dumb, but it lets me reuse existing code
