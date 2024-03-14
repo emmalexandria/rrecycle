@@ -14,7 +14,7 @@ use rrc_lib::{
         self, get_existent_paths, get_existent_trash_items, path_to_string,
         path_vec_from_string_vec,
     },
-    util::{self, pluralise_with_num},
+    util::{self},
     FileErr, RecursiveOperation,
 };
 use trash::{
@@ -105,7 +105,7 @@ impl BasicOperations {
         }
 
         for file in &files {
-            pb.set_file(file.name.clone());
+            pb.set_file_str(file.name.clone());
             purge_all(vec![file]).unwrap();
         }
 
@@ -114,13 +114,18 @@ impl BasicOperations {
     }
 
     pub fn trash(args: &Args) -> Result<(), OperationError> {
+        let pb = OpSpinner::default(OPERATION::TRASH);
+
         let filtered_path_strings = files::get_existent_paths(&args.files, |s| {
-            output::print_error(format!("{} does not exist, skipping...", s));
+            pb.print_no_file_warn(s);
         });
         let paths = files::path_vec_from_string_vec(filtered_path_strings);
         let len = paths.len();
 
+        pb.start();
+
         for path in paths {
+            pb.set_file_path(path);
             match trash::delete_all([path]) {
                 Ok(_) => {}
                 Err(e) => {
@@ -132,11 +137,8 @@ impl BasicOperations {
                 }
             }
         }
-        output::print_success(format!(
-            "Trashed {} {}",
-            len,
-            pluralise_with_num("file", len)
-        ));
+
+        pb.auto_finish(len);
 
         Ok(())
     }
@@ -146,25 +148,23 @@ pub struct RestoreOperation;
 
 impl RestoreOperation {
     fn operate(args: &Args) -> Result<(), OperationError> {
+        let pb = OpSpinner::default(OPERATION::RESTORE);
+
         let mut items = get_existent_trash_items(&args.files, output::run_conflict_prompt, |f| {
-            output::print_warn(format!(
-                "{} {}",
-                f,
-                "did not match any file in the recycle bin, skipping...".red()
-            ))
+            pb.print_no_file_warn(f);
         });
+
+        if items.len() > 1 {
+            pb.start();
+        }
 
         loop {
             let len_before_attempt = items.len();
-            let res = Self::attempt_restore(&mut items);
+            let res = Self::attempt_restore(&mut items, &pb);
             match res {
                 Ok(s) => {
                     if s {
-                        print_success(format!(
-                            "Restored {} {}",
-                            len_before_attempt,
-                            pluralise_with_num("file", len_before_attempt)
-                        ));
+                        pb.auto_finish(len_before_attempt);
                         return Ok(());
                     }
                 }
@@ -177,8 +177,12 @@ impl RestoreOperation {
 
     ///Attemps to restore the file. Handles any errors that might occur (or paths that don't actually exist in the trash)
     /// Returns a Ok(Some()) modified copy of the input files if changes had to be made, otherwise it returns Ok(None)
-    fn attempt_restore(mut files: &mut Vec<TrashItem>) -> Result<bool, OperationError> {
+    fn attempt_restore(
+        mut files: &mut Vec<TrashItem>,
+        pb: &OpSpinner,
+    ) -> Result<bool, OperationError> {
         for file in files.clone() {
+            pb.set_file_str(file.name.clone());
             match trash::os_limited::restore_all([file.clone()]) {
                 Ok(_) => util::remove_from_vec(&mut files, &file),
                 Err(e) => {
@@ -242,7 +246,7 @@ impl RecursiveOperation for DeleteOperation {
     fn display_cb(&mut self, path: &PathBuf, is_dir: bool) {
         let path_name = files::path_to_string(path);
 
-        self.pb.set_file(path_name);
+        self.pb.set_file_str(path_name);
     }
 }
 
@@ -301,7 +305,7 @@ impl RecursiveOperation for ShredOperation {
 
     fn display_cb(&mut self, path: &PathBuf, is_dir: bool) {
         let path_name = files::path_to_string(path);
-        self.pb.set_file(path_name);
+        self.pb.set_file_str(path_name);
     }
 }
 

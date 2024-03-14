@@ -1,6 +1,6 @@
 use std::{
     borrow::Cow,
-    path::{self, PathBuf},
+    path::{self, Path, PathBuf},
     time::Duration,
 };
 
@@ -211,11 +211,15 @@ impl OpSpinner {
         self.pb.enable_steady_tick(Duration::from_millis(150))
     }
 
-    pub fn set_file<'a, S>(&self, file: S)
+    pub fn set_file_str<'a, S>(&self, file: S)
     where
         S: Into<Cow<'static, str>>,
     {
         self.pb.set_message(file)
+    }
+
+    pub fn set_file_path<P: AsRef<Path>>(&self, path: P) {
+        self.pb.set_message(files::path_to_string(path))
     }
 
     pub fn print_error_msg<S: Colorize>(&self, msg: S) {
@@ -226,6 +230,7 @@ impl OpSpinner {
         self.pb.println(format!("{}", msg.yellow()))
     }
 
+    //Files are filtered before the progress bar gets ticked, so this has to be a normal println
     pub fn print_no_file_warn<S: AsRef<str>>(&self, file: S) {
         self.print_warn_msg(format!("{} does not exist, skipping...", file.as_ref()).as_str())
     }
@@ -242,18 +247,15 @@ impl OpSpinner {
         }
     }
 
-    pub fn print_success<T: Colorize>(msg: T) {
+    fn print_success<T: Colorize>(msg: T) {
         println!("{} {}", "✔".green(), msg.bold())
     }
 
-    pub fn print_no_op<T: Colorize>(msg: T) {
+    fn print_no_op<T: Colorize>(msg: T) {
         println!("{}", msg.bold())
     }
 
     pub fn finish(&self) {
-        /* self.pb.set_message("");
-        self.pb.set_prefix(message.to_string());
-        self.pb.tick(); */
         self.pb.finish_and_clear();
     }
 }

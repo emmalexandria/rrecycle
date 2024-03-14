@@ -68,13 +68,6 @@ pub fn handle_collision_item(
     }
 }
 
-pub fn pluralise_with_num(str: &str, num: usize) -> String {
-    if num > 1 || num == 0 {
-        return str.to_string() + "s";
-    }
-    return str.to_string();
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
