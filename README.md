@@ -21,9 +21,25 @@ To install the project, use Cargo or download a prebuilt binary from GitHub.
   rrc --help
 ```
 
-
-
 Please note that due to limitations in the underlying library which handles interactions with the recycle bin, the project will not compile on MacOS. 
+
+## Usage
+```bash
+rrc [OPTIONS] <COMMAND>
+
+Subcommands
+  trash, -t    Move files to the recycle bin
+  restore, -r  Restore files from the recycle bin
+  purge, -p    Remove files from the recycle bin
+  delete, -d   Delete files permanently
+  shred, -s    Securely delete files by overwriting them first
+  list, -l     List files in the recycle bin
+  help         Print this message or the help of the given subcommand(s)
+Options
+  -R, --recurse  Run delete and shred on directories without a prompt
+  -h, --help     Print help
+  -V, --version  Print version
+```
     
 ## Contributing
 
