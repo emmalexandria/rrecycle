@@ -18,7 +18,7 @@ use trash::TrashItem;
 
 use rrc_lib::files::{self};
 
-use crate::OPERATION;
+use crate::operations::OPERATION;
 
 impl OPERATION {
     pub fn to_infinitive(&self) -> String {

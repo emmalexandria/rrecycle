@@ -6,14 +6,15 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-argh = "0.1.12"
 chrono = "0.4.35"
+clap = { version = "4.5.2", features = ["cargo"] }
 colored = "2.1.0"
 dialoguer = "0.11.0"
 indicatif = "0.17.8"
 prettytable = "0.10.0"
 terminal_size = "0.3.0"
 trash = "4.0.0"
+wild = "2.2.1"
 
 [dev-dependencies]
 criterion = "0.5.1"

@@ -1,97 +1,66 @@
 use argh::FromArgs;
+use clap::{
+    arg,
+    builder::{BoolishValueParser, ValueParser},
+    command, value_parser, Arg, ArgMatches,
+};
+use rrc_lib::files;
 
 mod operations;
 mod output;
 
-#[derive(Debug, PartialEq)]
-enum OPERATION {
-    DELETE,
-    TRASH,
-    RESTORE,
-    SHRED,
-    LIST,
-    PURGE { all_files: bool },
-    NONE,
-}
-
-//This is really ugly but it works for now.
-impl From<&Args> for OPERATION {
-    fn from(a: &Args) -> Self {
-        if a.list {
-            return OPERATION::LIST;
-        } else if a.restore {
-            return OPERATION::RESTORE;
-        } else if a.trash {
-            return OPERATION::TRASH;
-        } else if a.purge {
-            return OPERATION::PURGE {
-                all_files: a.files.contains(&"*".to_string()),
-            };
-        } else if a.delete {
-            return OPERATION::DELETE;
-        } else if a.shred {
-            return OPERATION::SHRED;
-        }
-
-        return OPERATION::NONE;
-    }
-}
-
-///Basic arguments
-#[derive(FromArgs)]
-struct Args {
-    #[argh(switch, short = 't', description = "move a file to the trash bin")]
-    trash: bool,
-    #[argh(switch, short = 'r', description = "restore a file from the trash bin")]
-    restore: bool,
-    #[argh(
-        switch,
-        short = 'p',
-        description = "delete a file from the trash. deletes all if '*' is passed"
-    )]
-    purge: bool,
-    #[argh(
-        switch,
-        short = 'd',
-        description = "delete a file permanently without overwriting"
-    )]
-    delete: bool,
-    #[argh(
-        switch,
-        short = 's',
-        description = "shred a file (overwrite and then delete)"
-    )]
-    shred: bool,
-
-    #[argh(
-        option,
-        short = 'n',
-        description = "number of times to overwrite file when using -s (default=1)",
-        default = "1"
-    )]
-    ow_num: usize,
-
-    #[argh(
-        switch,
-        short = 'l',
-        description = "list all files in the system trash"
-    )]
-    list: bool,
-    #[argh(
-        switch,
-        short = 'R',
-        description = "recurse through directories without user confirmation"
-    )]
-    recurse: bool,
-
-    #[argh(positional)]
-    files: Vec<String>,
-}
-
 fn main() {
-    let args: Args = argh::from_env();
+    let files_arg = arg!(files: [files])
+        .num_args(1..)
+        .value_parser(value_parser!(String));
 
-    match operations::run_operation(OPERATION::from(&args), args) {
+    let matches = command!()
+        .subcommand_required(true)
+        .subcommand(
+            command!("trash")
+                .short_flag('t')
+                .about("Move files to the recycle bin")
+                .arg(files_arg.clone()),
+        )
+        .subcommand(
+            command!("restore")
+                .short_flag('r')
+                .about("Restore files from the recycle bin")
+                .arg(files_arg.clone()),
+        )
+        .subcommand(
+            command!("purge")
+                .short_flag('p')
+                .about("Remove files from the recycle bin")
+                .arg(arg!(all: -a --all))
+                .arg(files_arg.clone()),
+        )
+        .subcommand(
+            command!("delete")
+                .short_flag('d')
+                .about("Delete files permanently")
+                .arg(files_arg.clone()),
+        )
+        .subcommand(
+            command!("shred")
+                .short_flag('s')
+                .about("Securely delete files by overwriting them first")
+                .arg(
+                    arg!(ow_runs: -n --overwrite_runs <VALUE>)
+                        .default_value("1")
+                        .value_parser(value_parser!(usize)),
+                )
+                .arg(files_arg.clone()),
+        )
+        .subcommand(
+            command!("list")
+                .short_flag('l')
+                .about("List files in the recycle bin"),
+        )
+        .arg(arg!(recurse: -R --recurse))
+        .get_matches_from(wild::args());
+
+    match operations::run_operation_from_args(matches) {
         Ok(_) => {}
         Err(e) => eprintln!("{e}"),
     }
