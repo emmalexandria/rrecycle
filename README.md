@@ -9,7 +9,7 @@ A cross-platform terminal file manager with recycle bin support.
 - Delete files permanently
 - Move files to the recycle bin
 - Restore from the recycle bin
-- List files in the recycle bin
+- List files in the recycle bin (or search for files)
 - "Shred" files - securely delete them by overwriting them first. 
 
 
