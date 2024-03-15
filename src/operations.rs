@@ -14,7 +14,7 @@ use indicatif::ProgressBar;
 use rrc_lib::{
     files::{
         self, get_existent_paths, get_existent_trash_items, path_to_string,
-        path_vec_from_string_vec, trash_items_to_names,
+        path_vec_from_string_vec, trash_items_from_names, trash_items_to_names,
     },
     util, FileErr, RecursiveOperation,
 };
@@ -105,16 +105,16 @@ impl BasicOperations {
             .map_err(|e| OperationError::new(Box::new(e), OPERATION::LIST, None))?;
 
         if let Some(query) = search_val {
-            util::fuzzy_search(trash_items_to_names(&list), query.to_string());
+            let results = util::fuzzy_search(trash_items_to_names(&list), query.to_string());
+
+            output::print_trash_table(trash_items_from_names(&results, &list))
+                .map_err(|e| OperationError::new(Box::new(e), OPERATION::LIST, None))?;
+        } else {
+            output::print_trash_table(list)
+                .map_err(|e| OperationError::new(Box::new(e), OPERATION::LIST, None))?;
         }
 
-        match os_limited::list() {
-            Ok(l) => match output::print_trash_table(l) {
-                Ok(_) => Ok(()),
-                Err(e) => Err(OperationError::new(Box::new(e), OPERATION::LIST, None)),
-            },
-            Err(e) => Err(OperationError::new(Box::new(e), OPERATION::LIST, None)),
-        }
+        Ok(())
     }
     pub fn purge(files: Vec<String>, all_files: bool) -> Result<(), OperationError> {
         let items: Vec<TrashItem>;
