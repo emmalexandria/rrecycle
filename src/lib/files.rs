@@ -62,13 +62,16 @@ pub fn select_from_trash(name: &String) -> Option<Vec<TrashItem>> {
 pub fn get_existent_trash_items(
     names: &Vec<String>,
     s_cb: impl Fn(Vec<TrashItem>) -> TrashItem,
-    d_cb: impl Fn(String),
+    d_cb: impl Fn(&String),
 ) -> Vec<TrashItem> {
     names
         .iter()
         .filter_map(|n| match select_from_trash(n) {
             Some(i) => Some(s_cb(i)),
-            None => None,
+            None => {
+                d_cb(n);
+                None
+            }
         })
         .collect()
 }

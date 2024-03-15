@@ -1,16 +1,12 @@
 use std::{
-    clone,
     error::Error,
     fmt::Display,
     fs::{self, OpenOptions},
     path::{Path, PathBuf},
-    time::Duration,
 };
 
 use clap::ArgMatches;
-use colored::Colorize;
-use fuzzy_search::{bk::BkTree, distance::levenshtein};
-use indicatif::ProgressBar;
+
 use rrc_lib::{
     files::{
         self, get_existent_paths, get_existent_trash_items, path_to_string,
@@ -33,7 +29,6 @@ pub enum OPERATION {
     SHRED,
     LIST,
     PURGE { all_files: bool },
-    NONE,
 }
 
 #[derive(Debug)]
@@ -205,16 +200,13 @@ impl RestoreOperation {
 
     ///Attemps to restore the file. Handles any errors that might occur (or paths that don't actually exist in the trash)
     /// Returns a Ok(Some()) modified copy of the input files if changes had to be made, otherwise it returns Ok(None)
-    fn attempt_restore(
-        mut files: &mut Vec<TrashItem>,
-        pb: &OpSpinner,
-    ) -> Result<bool, OperationError> {
+    fn attempt_restore(files: &mut Vec<TrashItem>, pb: &OpSpinner) -> Result<bool, OperationError> {
         for file in files.clone() {
             pb.set_file_str(file.name.clone());
             match trash::os_limited::restore_all([file.clone()]) {
-                Ok(_) => util::remove_from_vec(&mut files, &file),
+                Ok(_) => util::remove_from_vec(files, &file),
                 Err(e) => {
-                    util::handle_collision_item(e, &mut files, &file).map_err(|err| {
+                    util::handle_collision_item(e, files, &file).map_err(|err| {
                         OperationError::new(Box::new(err), OPERATION::RESTORE, None)
                     })?;
                     return Ok(false);
@@ -272,7 +264,7 @@ impl RecursiveOperation for DeleteOperation {
         fs::remove_file(path).map_err(|e| FileErr::map(e, path))
     }
 
-    fn display_cb(&mut self, path: &PathBuf, is_dir: bool) {
+    fn display_cb(&mut self, path: &PathBuf, _is_dir: bool) {
         let path_name = files::path_to_string(path);
 
         self.pb.set_file_str(path_name);
@@ -332,7 +324,7 @@ impl RecursiveOperation for ShredOperation {
         Ok(())
     }
 
-    fn display_cb(&mut self, path: &PathBuf, is_dir: bool) {
+    fn display_cb(&mut self, path: &PathBuf, _is_dir: bool) {
         let path_name = files::path_to_string(path);
         self.pb.set_file_str(path_name);
     }
@@ -342,9 +334,9 @@ fn check_recursion<'a>(paths: &Vec<&Path>, recurse_default: bool) -> bool {
     if !recurse_default {
         for path in paths {
             if path.is_dir() {
-                return prompt_recursion(path_to_string(path)).is_ok_and(|v| v == true);
+                return prompt_recursion(path_to_string(path)).is_ok_and(|v| v);
             }
         }
     }
-    return recurse_default;
+    recurse_default
 }

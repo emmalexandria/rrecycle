@@ -1,7 +1,4 @@
-use std::ops::Sub;
-
-use chrono::format::Item;
-use fuzzy_search::{automata::LevenshteinAutomata, bk::BkTree, distance::levenshtein};
+use fuzzy_search::automata::LevenshteinAutomata;
 use trash::TrashItem;
 
 //The following 3 functions are all designed to work together in the same context (being a mutable reference to a vector which should be changed in place)

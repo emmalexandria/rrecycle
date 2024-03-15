@@ -29,7 +29,7 @@ fn gen_file(size: usize, name: &str) -> File {
     file.write_all(&ones).unwrap();
     file.flush().unwrap();
 
-    return file;
+    file
 }
 
 fn bench_overwrite(c: &mut Criterion) {
@@ -39,11 +39,11 @@ fn bench_overwrite(c: &mut Criterion) {
 
     for size in [10 * MB, 100 * MB, 500 * MB, 750 * MB, 1000 * MB] {
         let filename = &generate_random_filename();
-        let file = gen_file(size, &filename);
+        let file = gen_file(size, filename);
         group.bench_with_input(
             BenchmarkId::from_parameter((size / MB).to_string()),
             &file,
-            |b, f| b.iter(|| overwrite_file(&f, 1)),
+            |b, f| b.iter(|| overwrite_file(f, 1)),
         );
         std::fs::remove_file(filename).unwrap();
     }

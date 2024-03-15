@@ -4,9 +4,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use files::get_existent_paths;
-use indicatif::ProgressBar;
-
 pub mod files;
 pub mod util;
 

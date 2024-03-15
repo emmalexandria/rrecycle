@@ -1,20 +1,18 @@
 use std::{
     borrow::Cow,
-    path::{self, Path, PathBuf},
-    str::FromStr,
+    path::{self, Path},
     time::Duration,
 };
 
 use colored::Colorize;
 use rrc_lib::files;
-use terminal_size::terminal_size;
 
-use chrono::{Local, TimeZone};
+use chrono::TimeZone;
 use dialoguer::{theme::ColorfulTheme, Select};
 use indicatif::{ProgressBar, ProgressFinish, ProgressStyle};
 use prettytable::{
     cell,
-    format::{self, FormatBuilder, TableFormat},
+    format::{self, FormatBuilder},
     row, Row, Table,
 };
 use trash::TrashItem;
@@ -29,8 +27,7 @@ impl OPERATION {
             OPERATION::RESTORE => "restoring",
             OPERATION::SHRED => "shredding",
             OPERATION::LIST => "listing",
-            OPERATION::PURGE { all_files } => "purging",
-            OPERATION::NONE => "",
+            OPERATION::PURGE { all_files: _ } => "purging",
         }
         .into()
     }
@@ -41,8 +38,7 @@ impl OPERATION {
             OPERATION::RESTORE => "restored",
             OPERATION::SHRED => "shredded",
             OPERATION::LIST => "listed",
-            OPERATION::PURGE { all_files } => "purged",
-            OPERATION::NONE => "",
+            OPERATION::PURGE { all_files: _ } => "purged",
         }
         .into()
     }
@@ -152,7 +148,7 @@ impl TrashList {
     fn truncate_row_path(row: &mut Row, over_len: usize) {
         let path = row.get_cell(1).unwrap();
         if path.get_content().len() > over_len {
-            let (trunc_path, remaining_len) =
+            let (trunc_path, _remaining_len) =
                 truncate_path(path.get_content(), path.get_content().len() - over_len);
             row.set_cell(cell!(trunc_path), 1).unwrap();
         }
@@ -170,10 +166,9 @@ fn truncate_path(path_string: String, desired_len: usize) -> (String, i64) {
 
     path_string
         .split_inclusive(path::MAIN_SEPARATOR)
-        .into_iter()
         .rev()
         .try_for_each(|c| {
-            if trunc_path.len() == 0 {
+            if trunc_path.is_empty() {
                 trunc_path.push_str(c);
                 return Some(());
             }
@@ -224,7 +219,7 @@ pub fn run_conflict_prompt(items: Vec<TrashItem>) -> TrashItem {
         item_names,
     );
 
-    return items[selection].clone();
+    items[selection].clone()
 }
 
 pub fn file_conflict_prompt(prompt: String, items: Vec<String>) -> usize {
