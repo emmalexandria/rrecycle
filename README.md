@@ -24,7 +24,7 @@ To install the project, use Cargo or download a prebuilt binary from GitHub.
 Please note that due to limitations in the underlying library which handles interactions with the recycle bin, the project will not compile on MacOS. 
 
 ## Usage
-```bash
+```
 rrc [OPTIONS] <COMMAND>
 
 Subcommands
