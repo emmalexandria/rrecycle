@@ -1,0 +1,46 @@
+# rrecycle (rust+recycle)
+
+A cross-platform terminal file manager with recycle bin support.
+
+
+
+## Features
+
+- Delete files permanently
+- Move files to the recycle bin
+- Restore from the recycle bin
+- List files in the recycle bin
+- "Shred" files - securely delete them by overwriting them first. 
+
+
+## Installation
+To install the project, use Cargo. 
+
+```bash
+  cargo install rrecycle
+  rrc --help
+```
+
+Please note that due to limitations in the underlying library which handles interactions with the recycle bin, the project will not compile on MacOS. 
+    
+## Contributing
+
+Any contributions are very welcome! However, this project uses some rules for code
+structure which you must follow.
+
+### Project structure
+This is a split library and binary project. 
+
+The library contains most of what the application actually *does* to your filesystem, as well as utility functions. Functions and types that go in the library are independent from the binary, testable, and generic if possible. 
+
+The binary should control application flow, handle user input, and display output. 
+e.g it should not:
+
+- Check if files exist
+- Recurse over directories
+- Contain overly generic functions
+
+However, things should also not be removed from the binary for the sake of it. For example, calls to functions defined in the underlying trash library (trash-rs) are fine. Wrapper functions should be avoided. 
+
+This helps with strictly seperating concerns between application flow and what the application actually does (which terminal tools of this kind often struggle with).
+
