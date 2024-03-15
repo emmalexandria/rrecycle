@@ -1,4 +1,3 @@
-use argh::FromArgs;
 use clap::{
     arg,
     builder::{BoolishValueParser, ValueParser},
@@ -57,7 +56,7 @@ fn main() {
                 .short_flag('l')
                 .about("List files in the recycle bin"),
         )
-        .arg(arg!(recurse: -R --recurse))
+        .arg(arg!(recurse: -R --recurse "Run delete and shred on directories without a prompt"))
         .get_matches_from(wild::args());
 
     match operations::run_operation_from_args(matches) {
