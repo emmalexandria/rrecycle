@@ -6,6 +6,7 @@ version = "1.0.0"
 edition = "2021"
 readme = "README.md"
 license = "MIT"
+repository = "https://github.com/emmalexandria/rrecycle"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
