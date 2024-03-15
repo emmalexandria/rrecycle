@@ -1,5 +1,7 @@
 [package]
 name = "rrecycle"
+authors = ["Emma Alexandria"]
+description = "Powerful terminal file manager"
 version = "0.9.9"
 edition = "2021"
 

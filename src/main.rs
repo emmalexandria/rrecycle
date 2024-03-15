@@ -3,17 +3,32 @@ use clap::{
     builder::{BoolishValueParser, ValueParser},
     command, value_parser, Arg, ArgMatches,
 };
+use colored::Colorize;
 use rrc_lib::files;
 
 mod operations;
 mod output;
 
 fn main() {
+    let help_template = format!(
+        "{}{} - {}{}{}{}{}{}{}",
+        "{before-help}",
+        "{name} {version}".bold().green(),
+        "{author-with-newline}".italic(),
+        "{about-with-newline}",
+        "{usage} \n",
+        "\nSubcommands\n".bold().green(),
+        "{subcommands}".normal(),
+        "\nOptions\n".bold().green(),
+        "{options}"
+    );
+
     let files_arg = arg!(files: [files])
         .num_args(1..)
         .value_parser(value_parser!(String));
 
     let matches = command!()
+        .help_template(help_template)
         .subcommand_required(true)
         .subcommand(
             command!("trash")
