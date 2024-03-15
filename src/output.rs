@@ -1,22 +1,23 @@
 use std::{
     borrow::Cow,
     path::{self, Path, PathBuf},
+    str::FromStr,
     time::Duration,
 };
 
 use colored::Colorize;
+use rrc_lib::files;
 use terminal_size::terminal_size;
 
-use chrono::TimeZone;
+use chrono::{Local, TimeZone};
 use dialoguer::{theme::ColorfulTheme, Select};
 use indicatif::{ProgressBar, ProgressFinish, ProgressStyle};
 use prettytable::{
+    cell,
     format::{self, FormatBuilder, TableFormat},
-    row, Table,
+    row, Row, Table,
 };
 use trash::TrashItem;
-
-use rrc_lib::files::{self};
 
 use crate::operations::OPERATION;
 
@@ -47,85 +48,152 @@ impl OPERATION {
     }
 }
 
-pub fn format_unix_date(time: i64) -> String {
+const LONG_DATE_FORMAT: &str = "%H:%M:%S %Y/%m/%d ";
+
+pub fn format_unix_date(time: i64, format: &str) -> String {
     chrono::Local
         .timestamp_opt(time, 0)
         .unwrap()
-        .format("%Y-%m-%d %H:%M:%S")
+        .format(format)
         .to_string()
 }
 
-///Just don't look at any code involved in printing the list table.
-pub fn print_trash_table(items: Vec<TrashItem>) -> std::io::Result<()> {
-    let format = FormatBuilder::new()
-        .column_separator('│')
-        .borders('│')
-        .separator(
-            format::LinePosition::Top,
-            format::LineSeparator::new('─', '┬', '┌', '┐'),
-        )
-        .separator(
-            format::LinePosition::Bottom,
-            format::LineSeparator::new('─', '┴', '└', '┘'),
-        )
-        .separator(
-            format::LinePosition::Intern,
-            format::LineSeparator::new('─', '┼', '├', '┤'),
-        )
-        .padding(1, 1)
-        .build();
-
-    let table = get_sized_table(&items, &format);
-
-    table.printstd();
-
-    Ok(())
+pub struct TrashList {
+    table: Table,
+    max_width: u16,
 }
 
-fn get_sized_table(items: &Vec<TrashItem>, format: &TableFormat) -> Table {
-    //Hypothetical 'desired' table that may not be printed
-    let mut table = Table::new();
+impl Default for TrashList {
+    fn default() -> Self {
+        let format = FormatBuilder::new()
+            .column_separator('│')
+            .borders('│')
+            .separator(
+                format::LinePosition::Top,
+                format::LineSeparator::new('─', '┬', '┌', '┐'),
+            )
+            .separator(
+                format::LinePosition::Bottom,
+                format::LineSeparator::new('─', '┴', '└', '┘'),
+            )
+            .separator(
+                format::LinePosition::Intern,
+                format::LineSeparator::new('─', '┼', '├', '┤'),
+            )
+            .padding(1, 1)
+            .build();
+        let mut table = Table::new();
+        table.set_format(format);
+        table.set_titles(row![b->"Name", b->"Path", b->"Date"]);
 
-    table.set_format(*format);
-    table.set_titles(row![b->"Name", b->"Original path", b->"Time deleted"]);
-
-    let title_len = "Name".len() + "Original path".len() + "Time deleted".len();
-    let len = items.iter().fold(0, |m, v| {
-        (v.name.len()
-            + files::path_to_string(&v.original_path()).len()
-            + format_unix_date(v.time_deleted).len())
-        .max(m)
-    });
-
-    let max_len = len.max(title_len);
-    let term_width: usize = terminal_size().unwrap().0 .0.into();
-    let path_start;
-
-    if max_len + 20 > term_width {
-        path_start = (max_len + 20) - term_width
-    } else {
-        path_start = 0
+        Self {
+            table,
+            max_width: (terminal_size::terminal_size().unwrap().0 .0) - 20,
+        }
     }
-    //If we're over or close to max width, recreate the table with truncated original path
-    //Dumb magic number I know, but it's there to both add padding to the right side and account for the
-    //width of seperators and padding. I could calculate that. I won't.
-    for item in items {
-        table.add_row(row![
+}
+
+impl TrashList {
+    pub fn set_items(&mut self, items: &Vec<TrashItem>) {
+        items.iter().for_each(|i| {
+            self.table.add_row(Self::row_from_trash_item(i));
+        });
+        self.size_table()
+    }
+
+    fn row_from_trash_item(item: &TrashItem) -> Row {
+        row![
             item.name,
-            truncate_path(&item.original_path(), path_start),
-            format_unix_date(item.time_deleted)
-        ]);
+            files::path_to_string(item.original_path()),
+            format_unix_date(item.time_deleted, LONG_DATE_FORMAT)
+        ]
     }
 
-    table
+    pub fn size_table(&mut self) {
+        let width = self.calc_table_width();
+        if width < self.max_width.into() {
+            return;
+        }
+
+        let over_width = width - self.max_width as usize;
+
+        self.table
+            .row_iter_mut()
+            .for_each(|r| Self::truncate_row_path(r, over_width));
+    }
+
+    pub fn calc_table_width(&mut self) -> usize {
+        let mut width = 0;
+        let padding = self.table.get_format().get_padding();
+        let total_padding = padding.0 + padding.1;
+        self.table
+            .row_iter()
+            .for_each(|r| width = width.max(self.calculate_row_width(r, total_padding)));
+
+        width
+    }
+
+    fn calculate_row_width(&self, row: &Row, padding: usize) -> usize {
+        let num_cells = row.len();
+
+        let mut width = 0;
+        for i in 0..num_cells {
+            width += row.get_cell(i).unwrap().get_content().len();
+        }
+
+        // Add one character for each divider (1 divider per cell + additional end divider)
+        width += num_cells + 1;
+        // Add padding chars for each cell
+        width += num_cells * padding;
+
+        width
+    }
+
+    fn truncate_row_path(row: &mut Row, over_len: usize) {
+        let path = row.get_cell(1).unwrap();
+        if path.get_content().len() > over_len {
+            let (trunc_path, remaining_len) =
+                truncate_path(path.get_content(), path.get_content().len() - over_len);
+            row.set_cell(cell!(trunc_path), 1).unwrap();
+        }
+    }
+
+    pub fn print(&mut self) {
+        self.table.printstd();
+    }
 }
 
-fn truncate_path(path: &PathBuf, len: usize) -> String {
-    let str = files::path_to_string(path);
-    if len > 0 {
-        return "…".to_string() + &str[len..];
+///This function truncates a path to a desired length to the nearest path seperator and prepends '…'. Returns the truncated path and
+///the delta between the desired length of the path and its actual length
+fn truncate_path(path_string: String, desired_len: usize) -> (String, i64) {
+    let mut trunc_path = String::new();
+
+    path_string
+        .split_inclusive(path::MAIN_SEPARATOR)
+        .into_iter()
+        .rev()
+        .try_for_each(|c| {
+            if trunc_path.len() == 0 {
+                trunc_path.push_str(c);
+                return Some(());
+            }
+            let dist_with = desired_len.saturating_sub(trunc_path.len() + c.len());
+            let dist_without = desired_len.saturating_sub(trunc_path.len());
+            if dist_with < dist_without {
+                trunc_path.insert_str(0, c);
+                Some(())
+            } else {
+                None
+            }
+        });
+
+    if trunc_path.len() < path_string.len() {
+        trunc_path.insert(0, '…');
     }
-    str
+
+    let remaining_len = <usize as TryInto<i64>>::try_into(desired_len).unwrap()
+        - <usize as TryInto<i64>>::try_into(trunc_path.len()).unwrap();
+    (trunc_path, remaining_len + 1)
 }
 
 pub fn prompt_recursion(path: String) -> Result<bool, dialoguer::Error> {
@@ -147,7 +215,7 @@ pub fn run_conflict_prompt(items: Vec<TrashItem>) -> TrashItem {
         .map(|i| {
             i.original_path().to_str().unwrap().to_string()
                 + " | "
-                + &format_unix_date(i.time_deleted)
+                + &format_unix_date(i.time_deleted, LONG_DATE_FORMAT)
         })
         .collect();
 

@@ -23,7 +23,7 @@ use trash::{
     TrashItem,
 };
 
-use crate::output::{self, prompt_recursion, OpSpinner};
+use crate::output::{self, prompt_recursion, OpSpinner, TrashList};
 
 #[derive(Debug, PartialEq)]
 pub enum OPERATION {
@@ -101,19 +101,18 @@ fn get_files_from_sub(args: &ArgMatches) -> Vec<String> {
 struct BasicOperations;
 impl BasicOperations {
     pub fn list(search_val: Option<&String>) -> Result<(), OperationError> {
-        let list = os_limited::list()
+        let mut trash_list = TrashList::default();
+        let items = os_limited::list()
             .map_err(|e| OperationError::new(Box::new(e), OPERATION::LIST, None))?;
 
         if let Some(query) = search_val {
-            let results = util::fuzzy_search(trash_items_to_names(&list), query.to_string());
+            let results = util::fuzzy_search(trash_items_to_names(&items), query.to_string());
 
-            output::print_trash_table(trash_items_from_names(&results, &list))
-                .map_err(|e| OperationError::new(Box::new(e), OPERATION::LIST, None))?;
+            trash_list.set_items(&trash_items_from_names(&results, &items));
         } else {
-            output::print_trash_table(list)
-                .map_err(|e| OperationError::new(Box::new(e), OPERATION::LIST, None))?;
+            trash_list.set_items(&items);
         }
-
+        trash_list.print();
         Ok(())
     }
     pub fn purge(files: Vec<String>, all_files: bool) -> Result<(), OperationError> {
