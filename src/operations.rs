@@ -7,6 +7,7 @@ use std::{
     time::Duration,
 };
 
+use clap::ArgMatches;
 use colored::Colorize;
 use indicatif::ProgressBar;
 use rrc_lib::{
@@ -22,10 +23,18 @@ use trash::{
     TrashItem,
 };
 
-use crate::{
-    output::{self, print_success, prompt_recursion, OpSpinner},
-    Args, OPERATION,
-};
+use crate::output::{self, prompt_recursion, OpSpinner};
+
+#[derive(Debug, PartialEq)]
+pub enum OPERATION {
+    DELETE,
+    TRASH,
+    RESTORE,
+    SHRED,
+    LIST,
+    PURGE { all_files: bool },
+    NONE,
+}
 
 #[derive(Debug)]
 pub struct OperationError {
@@ -63,20 +72,33 @@ impl OperationError {
     }
 }
 
-pub fn run_operation(operation: OPERATION, args: Args) -> Result<(), OperationError> {
-    match operation {
-        OPERATION::RESTORE => RestoreOperation::operate(&args),
-        OPERATION::LIST => BasicOperations::list(),
-        OPERATION::PURGE { all_files } => BasicOperations::purge(&args, all_files),
-        OPERATION::DELETE => DeleteOperation::default().operate(&args),
-        OPERATION::TRASH => BasicOperations::trash(&args),
-        OPERATION::SHRED => ShredOperation::default(&args).operate(&args),
-        OPERATION::NONE => Ok(()),
-    }
+pub fn run_operation_from_args(args: ArgMatches) -> Result<(), OperationError> {
+    let recurse_default = args.get_flag("recurse");
+    return match args.subcommand() {
+        Some(("trash", m)) => BasicOperations::trash(get_files_from_sub(m)),
+        Some(("restore", m)) => RestoreOperation::operate(get_files_from_sub(m)),
+        Some(("delete", m)) => {
+            DeleteOperation::default().operate(get_files_from_sub(m), recurse_default)
+        }
+        Some(("purge", m)) => BasicOperations::purge(get_files_from_sub(m), m.get_flag("all")),
+        Some(("shred", m)) => ShredOperation::default(*m.get_one("ow_runs").unwrap())
+            .operate(get_files_from_sub(m), recurse_default),
+        Some(("list", _)) => BasicOperations::list(),
+        _ => Ok(()),
+    };
+}
+
+fn get_files_from_sub(args: &ArgMatches) -> Vec<String> {
+    args.get_many::<String>("files")
+        .map(|vals| vals.collect::<Vec<_>>())
+        .unwrap_or_default()
+        .iter()
+        .map(|v| v.to_string())
+        .collect()
 }
 
 ///Operations which don't recurse over the directory tree while printing output
-pub struct BasicOperations;
+struct BasicOperations;
 impl BasicOperations {
     pub fn list() -> Result<(), OperationError> {
         match os_limited::list() {
@@ -87,36 +109,36 @@ impl BasicOperations {
             Err(e) => Err(OperationError::new(Box::new(e), OPERATION::LIST, None)),
         }
     }
-    pub fn purge(args: &Args, all_files: bool) -> Result<(), OperationError> {
-        let files: Vec<TrashItem>;
+    pub fn purge(files: Vec<String>, all_files: bool) -> Result<(), OperationError> {
+        let items: Vec<TrashItem>;
         let pb = OpSpinner::default(OPERATION::PURGE { all_files });
 
         if all_files {
             match os_limited::list() {
-                Ok(l) => files = l,
+                Ok(l) => items = l,
                 Err(e) => {
                     return Err(OperationError::new(Box::new(e), OPERATION::LIST, None));
                 }
             }
         } else {
-            files = get_existent_trash_items(&args.files, output::run_conflict_prompt, |f| {
+            items = get_existent_trash_items(&files, output::run_conflict_prompt, |f| {
                 pb.print_no_file_warn(f);
             })
         }
 
-        for file in &files {
+        for file in &items {
             pb.set_file_str(file.name.clone());
             purge_all(vec![file]).unwrap();
         }
 
-        pb.auto_finish(files.len());
+        pb.auto_finish(items.len());
         Ok(())
     }
 
-    pub fn trash(args: &Args) -> Result<(), OperationError> {
+    pub fn trash(files: Vec<String>) -> Result<(), OperationError> {
         let pb = OpSpinner::default(OPERATION::TRASH);
 
-        let filtered_path_strings = files::get_existent_paths(&args.files, |s| {
+        let filtered_path_strings = files::get_existent_paths(&files, |s| {
             pb.print_no_file_warn(s);
         });
         let paths = files::path_vec_from_string_vec(filtered_path_strings);
@@ -144,13 +166,13 @@ impl BasicOperations {
     }
 }
 
-pub struct RestoreOperation;
+struct RestoreOperation;
 
 impl RestoreOperation {
-    fn operate(args: &Args) -> Result<(), OperationError> {
+    fn operate(files: Vec<String>) -> Result<(), OperationError> {
         let pb = OpSpinner::default(OPERATION::RESTORE);
 
-        let mut items = get_existent_trash_items(&args.files, output::run_conflict_prompt, |f| {
+        let mut items = get_existent_trash_items(&files, output::run_conflict_prompt, |f| {
             pb.print_no_file_warn(f);
         });
 
@@ -200,7 +222,7 @@ impl RestoreOperation {
 
 //This operation could technically be performed without the whole recursion shtick, but for reasons of output niceness it'll recurse. Deleting files is so
 //fast that I doubt the performance hit will matter
-pub struct DeleteOperation {
+struct DeleteOperation {
     pb: OpSpinner,
 }
 impl DeleteOperation {
@@ -210,12 +232,11 @@ impl DeleteOperation {
         }
     }
 
-    fn operate(&mut self, args: &Args) -> Result<(), OperationError> {
-        let string_paths =
-            get_existent_paths(&args.files, |f| self.pb.print_no_file_warn(f.as_str()));
+    fn operate(&mut self, files: Vec<String>, recurse_default: bool) -> Result<(), OperationError> {
+        let string_paths = get_existent_paths(&files, |f| self.pb.print_no_file_warn(f.as_str()));
 
         let paths = path_vec_from_string_vec(string_paths);
-        let recurse = check_recursion(&paths, args.recurse);
+        let recurse = check_recursion(&paths, recurse_default);
 
         self.pb.start();
 
@@ -257,18 +278,18 @@ struct ShredOperation {
     num_runs: usize,
 }
 impl ShredOperation {
-    fn default(args: &Args) -> ShredOperation {
+    fn default(num_runs: usize) -> ShredOperation {
         ShredOperation {
             pb: OpSpinner::default(OPERATION::SHRED),
-            num_runs: args.ow_num,
+            num_runs,
         }
     }
 
-    fn operate(&mut self, args: &Args) -> Result<(), OperationError> {
-        let string_paths = get_existent_paths(&args.files, |f| self.pb.print_no_file_warn(f));
+    fn operate(&mut self, files: Vec<String>, recurse_default: bool) -> Result<(), OperationError> {
+        let string_paths = get_existent_paths(&files, |f| self.pb.print_no_file_warn(f));
 
         let paths = path_vec_from_string_vec(string_paths);
-        let recurse = check_recursion(&paths, args.recurse);
+        let recurse = check_recursion(&paths, recurse_default);
 
         self.pb.start();
 
