@@ -9,14 +9,14 @@ use std::{
 
 use clap::ArgMatches;
 use colored::Colorize;
+use fuzzy_search::{bk::BkTree, distance::levenshtein};
 use indicatif::ProgressBar;
 use rrc_lib::{
     files::{
         self, get_existent_paths, get_existent_trash_items, path_to_string,
-        path_vec_from_string_vec,
+        path_vec_from_string_vec, trash_items_to_names,
     },
-    util::{self},
-    FileErr, RecursiveOperation,
+    util, FileErr, RecursiveOperation,
 };
 use trash::{
     os_limited::{self, purge_all},
@@ -83,7 +83,7 @@ pub fn run_operation_from_args(args: ArgMatches) -> Result<(), OperationError> {
         Some(("purge", m)) => BasicOperations::purge(get_files_from_sub(m), m.get_flag("all")),
         Some(("shred", m)) => ShredOperation::default(*m.get_one("ow_runs").unwrap())
             .operate(get_files_from_sub(m), recurse_default),
-        Some(("list", _)) => BasicOperations::list(),
+        Some(("list", m)) => BasicOperations::list(m.get_one("search")),
         _ => Ok(()),
     };
 }
@@ -100,7 +100,14 @@ fn get_files_from_sub(args: &ArgMatches) -> Vec<String> {
 ///Operations which don't recurse over the directory tree while printing output
 struct BasicOperations;
 impl BasicOperations {
-    pub fn list() -> Result<(), OperationError> {
+    pub fn list(search_val: Option<&String>) -> Result<(), OperationError> {
+        let list = os_limited::list()
+            .map_err(|e| OperationError::new(Box::new(e), OPERATION::LIST, None))?;
+
+        if let Some(query) = search_val {
+            util::fuzzy_search(trash_items_to_names(&list), query.to_string());
+        }
+
         match os_limited::list() {
             Ok(l) => match output::print_trash_table(l) {
                 Ok(_) => Ok(()),

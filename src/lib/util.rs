@@ -1,3 +1,5 @@
+use chrono::format::Item;
+use fuzzy_search::{automata::LevenshteinAutomata, bk::BkTree, distance::levenshtein};
 use trash::TrashItem;
 
 //The following 3 functions are all designed to work together in the same context (being a mutable reference to a vector which should be changed in place)
@@ -66,6 +68,11 @@ pub fn handle_collision_item(
         }
         _ => Err(error),
     }
+}
+
+pub fn fuzzy_search(choices: Vec<String>, query: String) -> Vec<String> {
+    let automata = LevenshteinAutomata::new(query.as_ref(), 2);
+    automata.fuzzy_search(&choices)
 }
 
 #[cfg(test)]

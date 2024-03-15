@@ -15,6 +15,7 @@ chrono = "0.4.35"
 clap = { version = "4.5.2", features = ["cargo"] }
 colored = "2.1.0"
 dialoguer = "0.11.0"
+fuzzy-search = "0.1.0"
 indicatif = "0.17.8"
 prettytable = "0.10.0"
 terminal_size = "0.3.0"

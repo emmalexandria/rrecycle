@@ -142,6 +142,25 @@ pub fn path_vec_from_string_vec<'a>(strings: Vec<&'a String>) -> Vec<&'a Path> {
     return ret_vec;
 }
 
+pub fn trash_items_to_names(items: &Vec<TrashItem>) -> Vec<String> {
+    items.iter().map(|i| i.name.clone()).collect()
+}
+
+pub fn trash_items_from_names(names: &Vec<String>, items: &Vec<TrashItem>) -> Vec<TrashItem> {
+    let mut filtered_names = names.clone();
+    filtered_names.dedup();
+    items
+        .iter()
+        .filter_map(|i| {
+            if names.contains(&i.name) {
+                return Some(i);
+            }
+            None
+        })
+        .cloned()
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use rand::distributions::{Alphanumeric, DistString};

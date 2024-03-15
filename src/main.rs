@@ -69,6 +69,11 @@ fn main() {
         .subcommand(
             command!("list")
                 .short_flag('l')
+                .arg(
+                    arg!(search: -s --search <NAME>)
+                        .num_args(1)
+                        .value_parser(value_parser!(String)),
+                )
                 .about("List files in the recycle bin"),
         )
         .arg(arg!(recurse: -R --recurse "Run delete and shred on directories without a prompt"))
