@@ -234,17 +234,6 @@ pub fn file_conflict_prompt(prompt: String, items: Vec<String>) -> usize {
         .interact()
         .unwrap();
 }
-pub fn print_success(message: String) {
-    println!("{} {}", "✔".green(), message.bold())
-}
-
-pub fn print_error(output: String) {
-    println!("{}", output.as_str().red().bold())
-}
-
-pub fn print_warn(output: String) {
-    println!("{}", output.as_str().yellow())
-}
 
 ///Capitalises the first letter of any valid ASCII string
 //Better to pull in a crate for this kind of thing usually, but our usecase is very constrained so it's unecessary
