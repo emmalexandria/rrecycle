@@ -2,7 +2,7 @@
 
 A cross-platform terminal file manager with recycle bin support.
 
-
+![Basic usage](https://vhs.charm.sh/vhs-311lSVb9LGhZ7euYbrX615.gif)
 
 ## Features
 
@@ -14,12 +14,14 @@ A cross-platform terminal file manager with recycle bin support.
 
 
 ## Installation
-To install the project, use Cargo. 
+To install the project, use Cargo or download a prebuilt binary from GitHub.
 
 ```bash
   cargo install rrecycle
   rrc --help
 ```
+
+
 
 Please note that due to limitations in the underlying library which handles interactions with the recycle bin, the project will not compile on MacOS. 
     
