@@ -1,9 +1,7 @@
-use clap::{
-    arg,
-    command, value_parser,
-};
-use colored::Colorize;
+use std::path::PathBuf;
 
+use clap::{arg, command, value_parser, Arg};
+use colored::Colorize;
 
 mod operations;
 mod output;
@@ -64,6 +62,27 @@ fn main() {
                         .value_parser(value_parser!(usize)),
                 )
                 .arg(files_arg.clone()),
+        )
+        .subcommand(
+            command!("search")
+                .short_flag('S')
+                .about("Search for a file in a directory and execute the given command")
+                .arg(
+                    arg!(command: <COMMAND>)
+                        .num_args(1)
+                        .value_parser(["t", "d", "s"])
+                        .required(true),
+                )
+                .arg(
+                    arg!(dir: <DIRECTORY>)
+                        .num_args(1)
+                        .value_parser(value_parser!(String)),
+                )
+                .arg(
+                    arg!(target: <TARGET>)
+                        .num_args(1)
+                        .value_parser(value_parser!(String)),
+                ),
         )
         .subcommand(
             command!("list")

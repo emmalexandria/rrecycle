@@ -1,18 +1,22 @@
+use core::num;
 use std::{
+    default,
     error::Error,
     fmt::Display,
-    fs::{self, OpenOptions},
+    fs::{self, File, OpenOptions},
+    io::ErrorKind,
     path::{Path, PathBuf},
 };
 
-use clap::ArgMatches;
+use clap::{builder::Str, ArgMatches};
 
+use fuzzy_search::distance::levenshtein;
 use rrc_lib::{
     files::{
         self, get_existent_paths, get_existent_trash_items, path_to_string,
         path_vec_from_string_vec, trash_items_from_names, trash_items_to_names,
     },
-    util, FileErr, RecursiveOperation,
+    util, FileErr, RecursiveCallback,
 };
 use trash::{
     os_limited::{self, purge_all},
@@ -21,12 +25,12 @@ use trash::{
 
 use crate::output::{self, prompt_recursion, OpSpinner, TrashList};
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum OPERATION {
     DELETE,
     TRASH,
     RESTORE,
-    SHRED,
+    SHRED { num_runs: usize },
     LIST,
     PURGE { all_files: bool },
 }
@@ -70,15 +74,22 @@ impl OperationError {
 pub fn run_operation_from_args(args: ArgMatches) -> Result<(), OperationError> {
     let recurse_default = args.get_flag("recurse");
     return match args.subcommand() {
-        Some(("trash", m)) => BasicOperations::trash(get_files_from_sub(m)),
+        Some(("trash", m)) => TrashOperation::trash(get_files_from_sub(m)),
         Some(("restore", m)) => RestoreOperation::operate(get_files_from_sub(m)),
         Some(("delete", m)) => {
             DeleteOperation::default().operate(get_files_from_sub(m), recurse_default)
         }
         Some(("purge", m)) => BasicOperations::purge(get_files_from_sub(m), m.get_flag("all")),
-        Some(("shred", m)) => ShredOperation::default(*m.get_one("ow_runs").unwrap())
+        Some(("shred", m)) => ShredOperation::new(*m.get_one("ow_runs").unwrap())
             .operate(get_files_from_sub(m), recurse_default),
+        Some(("search", m)) => SearchOperation::new(
+            m.get_one("command").unwrap(),
+            m.get_one("target").unwrap(),
+            m.get_one("dir").unwrap(),
+        )
+        .operate(),
         Some(("list", m)) => BasicOperations::list(m.get_one("search")),
+
         _ => Ok(()),
     };
 }
@@ -135,7 +146,11 @@ impl BasicOperations {
         pb.auto_finish(items.len());
         Ok(())
     }
+}
 
+struct TrashOperation;
+
+impl TrashOperation {
     pub fn trash(files: Vec<String>) -> Result<(), OperationError> {
         let pb = OpSpinner::default(OPERATION::TRASH);
 
@@ -164,6 +179,19 @@ impl BasicOperations {
         pb.auto_finish(len);
 
         Ok(())
+    }
+
+    pub fn trash_single(path: &PathBuf) -> Result<(), OperationError> {
+        match trash::delete_all([path]) {
+            Ok(_) => return Ok(()),
+            Err(e) => {
+                return Err(OperationError::new(
+                    Box::new(e),
+                    OPERATION::TRASH,
+                    Some(files::path_to_string(path)),
+                ))
+            }
+        }
     }
 }
 
@@ -223,13 +251,16 @@ impl RestoreOperation {
 struct DeleteOperation {
     pb: OpSpinner,
 }
-impl DeleteOperation {
+
+impl Default for DeleteOperation {
     fn default() -> DeleteOperation {
         DeleteOperation {
             pb: OpSpinner::default(OPERATION::DELETE),
         }
     }
+}
 
+impl DeleteOperation {
     fn operate(&mut self, files: Vec<String>, recurse_default: bool) -> Result<(), OperationError> {
         let string_paths = get_existent_paths(&files, |f| self.pb.print_no_file_warn(f.as_str()));
 
@@ -238,7 +269,7 @@ impl DeleteOperation {
 
         self.pb.start();
 
-        match rrc_lib::run_recursive_op(self, paths, recurse) {
+        match rrc_lib::recurse_on_paths(self, paths, recurse) {
             Ok(c) => {
                 self.pb.auto_finish(c);
                 Ok(())
@@ -256,18 +287,19 @@ impl DeleteOperation {
     }
 }
 
-impl RecursiveOperation for DeleteOperation {
-    fn cb(&self, path: &PathBuf) -> Result<(), FileErr> {
-        if path.is_dir() {
-            return fs::remove_dir(path).map_err(|e| FileErr::map(e, path));
+impl RecursiveCallback for DeleteOperation {
+    fn cb(&mut self, path: &PathBuf) -> Result<bool, FileErr> {
+        match files::remove_file_or_empty_dir(path) {
+            Ok(()) => return Ok(true),
+            Err(e) => return Err(FileErr::map(e, path)),
         }
-        fs::remove_file(path).map_err(|e| FileErr::map(e, path))
     }
 
-    fn display_cb(&mut self, path: &PathBuf, _is_dir: bool) {
+    fn display_cb(&mut self, path: &PathBuf, _is_dir: bool) -> bool {
         let path_name = files::path_to_string(path);
 
         self.pb.set_file_str(path_name);
+        true
     }
 }
 
@@ -275,10 +307,11 @@ struct ShredOperation {
     pb: OpSpinner,
     num_runs: usize,
 }
+
 impl ShredOperation {
-    fn default(num_runs: usize) -> ShredOperation {
+    fn new(num_runs: usize) -> ShredOperation {
         ShredOperation {
-            pb: OpSpinner::default(OPERATION::SHRED),
+            pb: OpSpinner::default(OPERATION::SHRED { num_runs }),
             num_runs,
         }
     }
@@ -291,7 +324,7 @@ impl ShredOperation {
 
         self.pb.start();
 
-        match rrc_lib::run_recursive_op(self, paths, recurse) {
+        match rrc_lib::recurse_on_paths(self, paths, recurse) {
             Ok(c) => {
                 self.pb.auto_finish(c);
                 Ok(())
@@ -301,7 +334,9 @@ impl ShredOperation {
                 let file = e.file.clone();
                 Err(OperationError::new(
                     Box::new(e),
-                    OPERATION::SHRED,
+                    OPERATION::SHRED {
+                        num_runs: self.num_runs,
+                    },
                     Some(file),
                 ))
             }
@@ -309,8 +344,8 @@ impl ShredOperation {
     }
 }
 
-impl RecursiveOperation for ShredOperation {
-    fn cb(&self, path: &PathBuf) -> Result<(), FileErr> {
+impl RecursiveCallback for ShredOperation {
+    fn cb(&mut self, path: &PathBuf) -> Result<bool, FileErr> {
         if !path.is_dir() {
             let mut file = OpenOptions::new()
                 .write(true)
@@ -319,14 +354,105 @@ impl RecursiveOperation for ShredOperation {
             files::overwrite_file(&mut file, self.num_runs).map_err(|e| FileErr::map(e, path))?;
         }
 
-        files::remove_file_or_dir(path).map_err(|e| FileErr::map(e, path))?;
+        files::remove_file_or_empty_dir(path).map_err(|e| FileErr::map(e, path))?;
+
+        Ok(true)
+    }
+
+    fn display_cb(&mut self, path: &PathBuf, _is_dir: bool) -> bool {
+        let path_name = files::path_to_string(path);
+        self.pb.set_file_str(path_name);
+
+        true
+    }
+}
+
+struct SearchOperation {
+    op: OPERATION,
+    target: String,
+    directory: String,
+    pb: OpSpinner,
+    operate_curr_file: bool,
+}
+
+impl SearchOperation {
+    pub fn new(op_arg: &String, target: &String, directory: &String) -> SearchOperation {
+        let op = match op_arg.as_str() {
+            "t" => OPERATION::TRASH,
+            "d" => OPERATION::DELETE,
+            "s" => OPERATION::SHRED { num_runs: 1 }, //if none of these match, clap hasn't parsed our arguments properly and nothing can be trusted.
+            _ => panic!(),
+        };
+
+        SearchOperation {
+            op: op,
+            pb: OpSpinner::default(op),
+            target: target.to_string(),
+            directory: directory.to_string(),
+            operate_curr_file: false,
+        }
+    }
+
+    fn operate(&mut self) -> Result<(), OperationError> {
+        let dir_clone = self.directory.clone();
+        let target_dir = Path::new(&dir_clone);
+        match rrc_lib::recurse_on_paths(self, vec![target_dir], true) {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                let file = e.file.clone();
+                Err(OperationError::new(Box::new(e), self.op, Some(file)))
+            }
+        }
+    }
+
+    fn run_op_single(&mut self, path: &PathBuf) -> std::io::Result<()> {
+        match self.op {
+            OPERATION::DELETE => files::remove_file_or_empty_dir(path)?,
+            OPERATION::SHRED { num_runs } => {
+                let file = OpenOptions::new()
+                    .write(true)
+                    .create(false)
+                    .read(true)
+                    .open(path)?;
+
+                files::overwrite_file(&file, num_runs)?;
+                files::remove_file_or_empty_dir(path)?;
+            }
+            OPERATION::TRASH => trash::delete_all([path]).unwrap(),
+            _ => {}
+        }
 
         Ok(())
     }
+}
 
-    fn display_cb(&mut self, path: &PathBuf, _is_dir: bool) {
-        let path_name = files::path_to_string(path);
-        self.pb.set_file_str(path_name);
+impl RecursiveCallback for SearchOperation {
+    fn cb(&mut self, path: &PathBuf) -> Result<bool, FileErr> {
+        if self.operate_curr_file {
+            self.run_op_single(path);
+            self.operate_curr_file = false;
+        }
+        Ok(true)
+    }
+
+    fn display_cb(&mut self, path: &PathBuf, is_dir: bool) -> bool {
+        let file_name = &files::os_str_to_str(path.file_name().unwrap());
+        if levenshtein(&file_name, &self.target) <= 1 {
+            let selection = output::prompt_search_operation(
+                &self.target,
+                &file_name.to_string(),
+                is_dir,
+                self.op,
+            )
+            .unwrap();
+            if selection.0 {
+                self.operate_curr_file = true;
+            }
+
+            return selection.1;
+        }
+
+        true
     }
 }
 

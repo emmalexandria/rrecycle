@@ -25,7 +25,7 @@ impl OPERATION {
             OPERATION::DELETE => "deleting",
             OPERATION::TRASH => "trashing",
             OPERATION::RESTORE => "restoring",
-            OPERATION::SHRED => "shredding",
+            OPERATION::SHRED { num_runs: _ } => "shredding",
             OPERATION::LIST => "listing",
             OPERATION::PURGE { all_files: _ } => "purging",
         }
@@ -36,7 +36,7 @@ impl OPERATION {
             OPERATION::DELETE => "deleted",
             OPERATION::TRASH => "trashed",
             OPERATION::RESTORE => "restored",
-            OPERATION::SHRED => "shredded",
+            OPERATION::SHRED { num_runs: _ } => "shredded",
             OPERATION::LIST => "listed",
             OPERATION::PURGE { all_files: _ } => "purged",
         }
@@ -198,6 +198,30 @@ pub fn prompt_recursion(path: String) -> Result<bool, dialoguer::Error> {
             path
         ))
         .interact()
+}
+
+pub fn prompt_search_operation(
+    query: &String,
+    match_name: &String,
+    is_dir: bool,
+    op: OPERATION,
+) -> Result<(bool, bool), dialoguer::Error> {
+    let dir_string = match is_dir {
+        true => "directory",
+        false => "file",
+    };
+
+    let op = dialoguer::Confirm::with_theme(&ColorfulTheme::default())
+        .with_prompt(format!(
+            "Found {dir_string} {match_name} for query {query}. Operate?"
+        ))
+        .interact()?;
+
+    let cont = dialoguer::Confirm::with_theme(&ColorfulTheme::default())
+        .with_prompt(format!("Continue searching?"))
+        .interact()?;
+
+    Ok((op, cont))
 }
 
 pub fn run_conflict_prompt(items: Vec<TrashItem>) -> TrashItem {

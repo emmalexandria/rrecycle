@@ -1,11 +1,13 @@
 use std::{
+    borrow::Cow,
+    ffi::OsStr,
     fs::{self, File},
     io::{self, BufWriter, Seek, Write},
     path::{Path, PathBuf},
 };
 use trash::{os_limited, TrashItem};
 
-use crate::{FileErr, RecursiveOperation};
+use crate::{FileErr, RecursiveCallback};
 
 ///Returns a losslessly converted string if possible, but if that errors return the lossy conversion.
 //This function is used pretty much everywhere. While it may cause issues in some edge case,
@@ -17,31 +19,44 @@ pub fn path_to_string<P: AsRef<Path>>(path: P) -> String {
     }
 }
 
+//Same as above for os_str
+pub fn os_str_to_str<'a>(path: &'a OsStr) -> Cow<'_, str> {
+    match path.to_str() {
+        Some(s) => Cow::Borrowed(s),
+        None => path.to_string_lossy(),
+    }
+}
+
 pub fn run_op_on_dir_recursive<T>(
     operation: &mut T,
     dir: &Path,
     mut count: usize,
-) -> Result<usize, FileErr>
+) -> Result<(usize, bool), FileErr>
 where
-    T: RecursiveOperation,
+    T: RecursiveCallback,
 {
     if dir.is_dir() {
         for entry in fs::read_dir(dir).map_err(|e| FileErr::map(e, dir))? {
             let entry = entry.map_err(|e| FileErr::map(e, dir))?;
             let path = entry.path();
             if path.is_dir() {
-                run_op_on_dir_recursive(operation, &path, count)?;
+                if !run_op_on_dir_recursive(operation, &path, count)?.1 {
+                    return Ok((count, false));
+                }
             } else {
                 count += 1;
-                operation.display_cb(&path, false);
-                operation.cb(&path)?;
+                if !operation.execute_callbacks(&path, false)? {
+                    return Ok((count, false));
+                }
             }
         }
         count += 1;
-        operation.display_cb(&PathBuf::from(dir), true);
-        operation.cb(&PathBuf::from(dir))?;
+        return Ok((
+            count,
+            operation.execute_callbacks(&PathBuf::from(dir), true)?,
+        ));
     }
-    Ok(count)
+    Ok((count, true))
 }
 
 pub fn select_from_trash(name: &String) -> Option<Vec<TrashItem>> {
@@ -107,15 +122,18 @@ pub fn overwrite_file(file: &File, runs: usize) -> std::io::Result<()> {
     Ok(())
 }
 
-pub fn remove_file_or_dir(path: &PathBuf) -> std::io::Result<()> {
+pub fn remove_file_or_empty_dir(path: &PathBuf) -> std::io::Result<()> {
     if !path.exists() {
         return Err(std::io::ErrorKind::NotFound.into());
     }
 
     if path.is_dir() {
-        return fs::remove_dir(path);
+        fs::remove_dir(path)?;
+    } else {
+        fs::remove_file(path)?;
     }
-    fs::remove_file(path)
+
+    Ok(())
 }
 
 pub fn get_existent_paths<'a, T, U>(input_paths: &'a T, d_cb: impl Fn(U)) -> Vec<U>
